@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "abiVersion": 2,
-  "coreCommit": "9ccd9407181bf9c88b8d37fedd68fb068a2a30a3",
+  "coreCommit": "29935ea7e8b939e38005e735b5030f192cb5e7be",
   "toolchain": {
     "emscripten": "6.0.5",
     "protobuf": "3.21.6"

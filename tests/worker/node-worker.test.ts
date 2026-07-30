@@ -77,26 +77,27 @@ describe("Node parser worker integration", () => {
         "l_returnflag", "l_linestatus", "l_shipdate", "l_commitdate",
         "l_receiptdate", "l_shipinstruct", "l_shipmode", "l_comment",
       ]);
-      const layout = await supervisor.inspectRowGroup(source, 0);
-      expect(layout.rowGroup).toBe(0);
+      expect(metadata.rowGroups).toHaveLength(2);
+      const layout = await supervisor.inspectRowGroup(source, 1);
+      expect(layout.rowGroup).toBe(1);
       expect(layout.columns).toHaveLength(16);
       await expect(
         supervisor.inspectPage(source, {
-          rowGroup: 0,
+          rowGroup: 1,
           column: 0,
           rowOffset: 0n,
           rowCount: 2,
         }),
-      ).resolves.toMatchObject({ values: ["11", "12"] });
+      ).resolves.toMatchObject({ values: ["13", "14"] });
       await expect(
         supervisor.inspectPage(source, {
-          rowGroup: 0,
+          rowGroup: 1,
           column: 15,
           rowOffset: 0n,
           rowCount: 2,
         }),
       ).resolves.toMatchObject({
-        values: ["first line", "second line"],
+        values: ["third line", "fourth line"],
       });
     } finally {
       await supervisor.dispose();

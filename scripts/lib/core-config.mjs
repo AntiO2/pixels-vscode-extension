@@ -7,7 +7,7 @@ export const repositoryRoot = path.resolve(
 );
 export const coreRoot = path.join(repositoryRoot, "third_party", "pixels");
 export const coreCommit =
-  "9ccd9407181bf9c88b8d37fedd68fb068a2a30a3";
+  "29935ea7e8b939e38005e735b5030f192cb5e7be";
 export const coreAbi = 2;
 export const protobufVersion = "3.21.6";
 export const nativeBuild = path.join(repositoryRoot, "build", "core-native");

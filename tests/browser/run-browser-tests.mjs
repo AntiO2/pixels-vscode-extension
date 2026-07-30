@@ -100,9 +100,9 @@ try {
     return await globalThis.pixelsBrowserValidation;
   });
   if (
-    result.generations !== 2 ||
-    result.rangeRequests !== 7 ||
-    result.transferredBytes !== "956"
+    result.generations !== 3 ||
+    result.rangeRequests !== 14 ||
+    result.transferredBytes !== "2558"
   ) {
     throw new Error(
       `unexpected browser worker metrics: ${JSON.stringify(result)}`,
@@ -129,9 +129,9 @@ try {
       kind: "metadata",
       revision: 1,
       source: {
-        uri: "vscode-vfs://fixture/example.pxl",
-        size: "514",
-        revision: "514:1",
+        uri: "vscode-vfs://fixture/tpch-lineitem.pxl",
+        size: validation.lineitemSize,
+        revision: `${validation.lineitemSize}:1`,
       },
       capabilities: {
         abi: 2,
@@ -141,33 +141,39 @@ try {
         encodings: ["NONE", "RUNLENGTH", "DICTIONARY"],
         nested: "portable-v1",
       },
-      metadata: JSON.parse(validation.metadata),
+      metadata: JSON.parse(validation.lineitemMetadata),
     });
     emit({
       kind: "rowGroup",
       revision: 1,
-      rowGroup: JSON.parse(validation.rowGroup),
+      rowGroup: JSON.parse(validation.lineitemRowGroup),
     });
     emit({
       kind: "page",
       revision: 1,
-      page: JSON.parse(validation.page),
+      page: JSON.parse(validation.lineitemPage),
     });
   }, result);
 
   await webview.getByRole("button", { name: "Schema" }).click();
   const schemaText = await webview.locator("main").innerText();
-  if (!schemaText.includes("score") || !schemaText.includes("DECIMAL")) {
-    throw new Error("webview Schema view did not render canonical types");
+  if (
+    !schemaText.includes("l_orderkey") ||
+    !schemaText.includes("l_comment")
+  ) {
+    throw new Error("webview Schema view did not render lineitem columns");
   }
   await webview.getByRole("button", { name: "Row Groups" }).click();
-  if (!(await webview.locator("main").innerText()).includes("Row group 0 layout")) {
-    throw new Error("webview Row Groups view did not render layout");
+  if (!(await webview.locator("main").innerText()).includes("Row group 1 layout")) {
+    throw new Error("webview Row Groups view did not render lineitem layout");
   }
   await webview.getByRole("button", { name: "Data Preview" }).click();
   const previewText = await webview.locator("main").innerText();
-  if (!previewText.includes("id · LONG") || !previewText.includes("9")) {
-    throw new Error("webview Data Preview did not render exact values");
+  if (
+    !previewText.includes("l_comment · VARCHAR") ||
+    !previewText.includes("fourth line")
+  ) {
+    throw new Error("webview Data Preview did not render lineitem values");
   }
   await webview.getByRole("button", { name: "Physical Layout" }).click();
   const layoutText = await webview.locator("main").innerText();

@@ -17,6 +17,10 @@ interface BrowserValidationResult {
   readonly metadata: string;
   readonly rowGroup: string;
   readonly page: string;
+  readonly lineitemMetadata: string;
+  readonly lineitemRowGroup: string;
+  readonly lineitemPage: string;
+  readonly lineitemSize: string;
   readonly coreDigest: string;
   readonly generations: number;
   readonly rangeRequests: number;
@@ -54,6 +58,18 @@ async function run(): Promise<BrowserValidationResult> {
   const source = new BufferRangeSource(
     "test-vfs://browser/canonical-fixture",
     fixture,
+    { limit: BROWSER_SOURCE_LIMIT },
+  );
+  const lineitemResponse = await fetch(
+    "/third_party/pixels/cpp/tests/data/tpch-lineitem.pxl",
+  );
+  if (!lineitemResponse.ok) {
+    throw new Error("unable to load TPC-H lineitem fixture");
+  }
+  const lineitem = new Uint8Array(await lineitemResponse.arrayBuffer());
+  const lineitemSource = new BufferRangeSource(
+    "test-vfs://browser/tpch-lineitem.pxl",
+    lineitem,
     { limit: BROWSER_SOURCE_LIMIT },
   );
   const supervisor = new WorkerSupervisor(
@@ -100,6 +116,35 @@ async function run(): Promise<BrowserValidationResult> {
     if (recreatedMetadata !== EXPECTED_METADATA) {
       throw new Error("recreated browser worker returned different metadata");
     }
+    await supervisor.restart();
+    const decodedLineitemMetadata =
+      await supervisor.inspectMetadata(lineitemSource);
+    const lineitemMetadata = JSON.stringify(decodedLineitemMetadata);
+    if (
+      decodedLineitemMetadata.schemaCount !== 16 ||
+      decodedLineitemMetadata.rowGroupCount !== 2
+    ) {
+      throw new Error("browser did not decode the complete lineitem shape");
+    }
+    const lineitemRowGroup = JSON.stringify(
+      await supervisor.inspectRowGroup(lineitemSource, 1),
+    );
+    const decodedLineitemPage = await supervisor.inspectPage(
+      lineitemSource,
+      {
+        rowGroup: 1,
+        column: 15,
+        rowOffset: 0n,
+        rowCount: 2,
+      },
+    );
+    const lineitemPage = JSON.stringify(decodedLineitemPage);
+    if (
+      JSON.stringify(decodedLineitemPage.values) !==
+      JSON.stringify(["third line", "fourth line"])
+    ) {
+      throw new Error("browser decoded incorrect lineitem values");
+    }
     const wasmArtifact =
       manifest.artifacts["pixels-inspector-wasm.wasm"];
     if (wasmArtifact === undefined) {
@@ -109,6 +154,10 @@ async function run(): Promise<BrowserValidationResult> {
       metadata,
       rowGroup,
       page,
+      lineitemMetadata,
+      lineitemRowGroup,
+      lineitemPage,
+      lineitemSize: String(lineitem.byteLength),
       coreDigest: wasmArtifact.sha256,
       generations: supervisor.metrics.generations,
       rangeRequests: supervisor.metrics.rangeRequests,
@@ -122,6 +171,7 @@ async function run(): Promise<BrowserValidationResult> {
   } finally {
     await supervisor.dispose();
     await source.close();
+    await lineitemSource.close();
   }
 }
 
