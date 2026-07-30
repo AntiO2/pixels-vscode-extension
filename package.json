@@ -1,0 +1,37 @@
+{
+  "name": "pixels-vscode-extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "extension",
+    "protocol-client",
+    "worker"
+  ],
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "build:core": "node scripts/build-core-wasm.mjs",
+    "stage:core": "node scripts/stage-core-wasm.mjs",
+    "verify:core": "node scripts/verify-core.mjs",
+    "verify:package": "node scripts/verify-package.mjs",
+    "lint": "eslint .",
+    "typecheck": "tsc -b --pretty false",
+    "test": "vitest run",
+    "test:browser": "npm run build && node tests/browser/run-browser-tests.mjs",
+    "check": "npm run lint && npm run typecheck && npm test && npm run build && npm run verify:core && npm run verify:package"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "1.62.0",
+    "@types/node": "24.13.3",
+    "@types/vscode": "1.125.0",
+    "esbuild": "0.28.1",
+    "eslint": "10.8.0",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.65.0",
+    "vitest": "4.1.10"
+  }
+}

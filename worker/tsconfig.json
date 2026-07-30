@@ -1,0 +1,20 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "rootDir": "src",
+    "outDir": "../build/types/worker",
+    "tsBuildInfoFile": "../build/types/worker.tsbuildinfo",
+    "types": [
+      "node"
+    ]
+  },
+  "references": [
+    {
+      "path": "../protocol-client"
+    }
+  ],
+  "include": [
+    "src/**/*.ts"
+  ]
+}

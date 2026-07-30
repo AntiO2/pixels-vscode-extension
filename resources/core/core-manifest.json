@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "abiVersion": 1,
+  "coreCommit": "ea73f955059315d1cef74f5c15f3c46ad0fc827a",
+  "toolchain": {
+    "emscripten": "6.0.5",
+    "protobuf": "3.21.6"
+  },
+  "capabilities": [
+    "metadata-v1",
+    "plain-long-page-v1",
+    "range-io-v1",
+    "cancellation-v1"
+  ],
+  "artifacts": {
+    "pixels-inspector-wasm.cjs": {
+      "bytes": 11887,
+      "sha256": "ae3e627342412c9532dd0043a829edf6be0be973b1a64cb1089ac0ee3bc7602a"
+    },
+    "pixels-inspector-wasm.wasm": {
+      "bytes": 159368,
+      "sha256": "fb4e2e58560b22ecfeff7f8f13582d26ecd952b0b34e1a74d56914d2979b2eea"
+    }
+  }
+}

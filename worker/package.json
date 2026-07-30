@@ -1,0 +1,10 @@
+{
+  "name": "@pixels-inspector/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "dependencies": {
+    "@pixels-inspector/protocol-client": "0.1.0"
+  }
+}

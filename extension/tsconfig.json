@@ -1,0 +1,21 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "rootDir": "src",
+    "outDir": "../build/types/extension",
+    "tsBuildInfoFile": "../build/types/extension.tsbuildinfo",
+    "types": [
+      "node",
+      "vscode"
+    ]
+  },
+  "references": [
+    {
+      "path": "../protocol-client"
+    }
+  ],
+  "include": [
+    "src/**/*.ts"
+  ]
+}

@@ -1,0 +1,3 @@
+[submodule "third_party/pixels"]
+	path = third_party/pixels
+	url = git@github.com:AntiO2/pixels.git

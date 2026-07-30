@@ -1,0 +1,17 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "./protocol-client"
+    },
+    {
+      "path": "./worker"
+    },
+    {
+      "path": "./extension"
+    },
+    {
+      "path": "./tests"
+    }
+  ]
+}

@@ -1,0 +1,282 @@
+import {
+  CORE_ABI_VERSION,
+  InspectorError,
+  toSafeLength,
+} from "@pixels-inspector/protocol-client";
+
+import type { EmscriptenInspectorModule } from "./wasm-types.js";
+
+const STATUS_OK = 0;
+const STATUS_RANGE_READY = 1;
+const STATUS_RESULT_READY = 2;
+const STATUS_CANCELLED = 108;
+
+const STATUS_NAMES: Readonly<Record<number, string>> = Object.freeze({
+  100: "INVALID_ARGUMENT",
+  101: "OUT_OF_BOUNDS",
+  102: "MALFORMED_PROTOBUF",
+  103: "UNSUPPORTED_VERSION",
+  104: "INVALID_MAGIC",
+  105: "INVALID_STATE",
+  106: "UNSUPPORTED_ENCODING",
+  107: "UNSUPPORTED_TYPE",
+  108: "CANCELLED",
+  109: "BUFFER_TOO_SMALL",
+  110: "INVALID_HANDLE",
+  111: "INTERNAL_ERROR",
+});
+
+export interface WasmRangeStep {
+  readonly kind: "range";
+  readonly offset: bigint;
+  readonly length: bigint;
+}
+
+export interface WasmResultStep {
+  readonly kind: "result";
+  readonly json: string;
+}
+
+export type WasmStep = WasmRangeStep | WasmResultStep;
+
+export class WasmInspectorClient {
+  private readonly scratchPointer: number;
+  private handle = 0;
+
+  public constructor(private readonly module: EmscriptenInspectorModule) {
+    if (module._pixels_inspector_abi_version() !== CORE_ABI_VERSION) {
+      throw new InspectorError(
+        "ABI_MISMATCH",
+        `Core ABI ${String(module._pixels_inspector_abi_version())} does not match ${String(CORE_ABI_VERSION)}`,
+      );
+    }
+    this.scratchPointer = module._malloc(16);
+    if (this.scratchPointer === 0) {
+      throw new InspectorError("CORE_ERROR", "unable to allocate ABI scratch memory");
+    }
+  }
+
+  public get abiVersion(): number {
+    return this.module._pixels_inspector_abi_version();
+  }
+
+  public beginMetadata(fileSize: bigint): WasmStep {
+    this.destroySession();
+    const status = this.module._pixels_inspector_create(
+      fileSize,
+      this.scratchPointer,
+    );
+    this.requireStatus(status, STATUS_OK, "create session");
+    this.handle = this.dataView(4).getUint32(0, true);
+    if (this.handle === 0) {
+      throw new InspectorError("CORE_ERROR", "Core returned an invalid handle");
+    }
+    return this.step(
+      this.module._pixels_inspector_begin_metadata(this.handle),
+    );
+  }
+
+  public beginPlainLongPage(
+    rowGroup: number,
+    column: number,
+    rowOffset: bigint,
+    rowCount: number,
+  ): WasmStep {
+    this.requireSession();
+    return this.step(
+      this.module._pixels_inspector_begin_plain_long_page(
+        this.handle,
+        rowGroup,
+        column,
+        rowOffset,
+        rowCount,
+      ),
+    );
+  }
+
+  public supplyRange(offset: bigint, bytes: Uint8Array): WasmStep {
+    this.requireSession();
+    const pointer = this.module._malloc(bytes.byteLength);
+    if (bytes.byteLength > 0 && pointer === 0) {
+      throw new InspectorError(
+        "CORE_ERROR",
+        "unable to allocate supplied range in WASM memory",
+      );
+    }
+    try {
+      this.module.HEAPU8.set(bytes, pointer);
+      return this.step(
+        this.module._pixels_inspector_supply_range(
+          this.handle,
+          offset,
+          BigInt(bytes.byteLength),
+          pointer,
+        ),
+      );
+    } finally {
+      this.module._free(pointer);
+    }
+  }
+
+  public cancel(): void {
+    this.requireSession();
+    this.requireStatus(
+      this.module._pixels_inspector_cancel(this.handle),
+      STATUS_CANCELLED,
+      "cancel session",
+    );
+  }
+
+  public destroySession(): void {
+    if (this.handle === 0) {
+      return;
+    }
+    const handle = this.handle;
+    this.handle = 0;
+    this.requireStatus(
+      this.module._pixels_inspector_destroy(handle),
+      STATUS_OK,
+      "destroy session",
+    );
+  }
+
+  public dispose(): void {
+    this.destroySession();
+    this.module._free(this.scratchPointer);
+  }
+
+  private step(status: number): WasmStep {
+    if (status === STATUS_RANGE_READY) {
+      this.requireStatus(
+        this.module._pixels_inspector_next_range(
+          this.handle,
+          this.scratchPointer,
+          this.scratchPointer + 8,
+        ),
+        STATUS_RANGE_READY,
+        "read pending range",
+      );
+      const view = this.dataView(16);
+      return {
+        kind: "range",
+        offset: view.getBigUint64(0, true),
+        length: view.getBigUint64(8, true),
+      };
+    }
+    if (status === STATUS_RESULT_READY) {
+      return {
+        kind: "result",
+        json: this.readResult(),
+      };
+    }
+    throw this.coreError(status);
+  }
+
+  private readResult(): string {
+    this.requireStatus(
+      this.module._pixels_inspector_result_size(
+        this.handle,
+        this.scratchPointer,
+      ),
+      STATUS_OK,
+      "read result size",
+    );
+    const length = this.dataView(8).getBigUint64(0, true);
+    const safeLength = toSafeLength(length, "Core result length");
+    const pointer = this.module._malloc(safeLength);
+    if (safeLength > 0 && pointer === 0) {
+      throw new InspectorError(
+        "CORE_ERROR",
+        "unable to allocate Core result buffer",
+      );
+    }
+    try {
+      this.requireStatus(
+        this.module._pixels_inspector_copy_result(
+          this.handle,
+          pointer,
+          length,
+        ),
+        STATUS_OK,
+        "copy result",
+      );
+      return new TextDecoder("utf-8", { fatal: true }).decode(
+        this.module.HEAPU8.slice(pointer, pointer + safeLength),
+      );
+    } finally {
+      this.module._free(pointer);
+    }
+  }
+
+  private readError(): string | undefined {
+    if (this.handle === 0) {
+      return undefined;
+    }
+    const sizeStatus = this.module._pixels_inspector_error_size(
+      this.handle,
+      this.scratchPointer,
+    );
+    if (sizeStatus !== STATUS_OK) {
+      return undefined;
+    }
+    const length = this.dataView(8).getBigUint64(0, true);
+    const safeLength = toSafeLength(length, "Core error length");
+    const pointer = this.module._malloc(safeLength);
+    if (safeLength > 0 && pointer === 0) {
+      return undefined;
+    }
+    try {
+      if (
+        this.module._pixels_inspector_copy_error(
+          this.handle,
+          pointer,
+          length,
+        ) !== STATUS_OK
+      ) {
+        return undefined;
+      }
+      return new TextDecoder().decode(
+        this.module.HEAPU8.slice(pointer, pointer + safeLength),
+      );
+    } finally {
+      this.module._free(pointer);
+    }
+  }
+
+  private coreError(status: number): InspectorError {
+    const statusName = STATUS_NAMES[status] ?? `STATUS_${String(status)}`;
+    const detail = this.readError();
+    return new InspectorError(
+      status === STATUS_CANCELLED ? "CANCELLED" : "CORE_ERROR",
+      detail === undefined ? statusName : `${statusName}: ${detail}`,
+      status === STATUS_CANCELLED,
+    );
+  }
+
+  private requireStatus(
+    actual: number,
+    expected: number,
+    operation: string,
+  ): void {
+    if (actual !== expected) {
+      throw new InspectorError(
+        "CORE_ERROR",
+        `${operation} returned ${STATUS_NAMES[actual] ?? String(actual)}`,
+      );
+    }
+  }
+
+  private requireSession(): void {
+    if (this.handle === 0) {
+      throw new InspectorError("CORE_ERROR", "no Core session is active");
+    }
+  }
+
+  private dataView(length: number): DataView {
+    return new DataView(
+      this.module.HEAPU8.buffer,
+      this.scratchPointer,
+      length,
+    );
+  }
+}

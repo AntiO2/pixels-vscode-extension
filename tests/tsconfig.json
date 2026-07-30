@@ -1,0 +1,26 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "noEmit": true,
+    "tsBuildInfoFile": "../build/types/tests.tsbuildinfo",
+    "types": [
+      "node",
+      "vitest/globals"
+    ]
+  },
+  "references": [
+    {
+      "path": "../protocol-client"
+    },
+    {
+      "path": "../worker"
+    },
+    {
+      "path": "../extension"
+    }
+  ],
+  "include": [
+    "**/*.ts"
+  ]
+}
