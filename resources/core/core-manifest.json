@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "abiVersion": 2,
-  "coreCommit": "29935ea7e8b939e38005e735b5030f192cb5e7be",
+  "abiVersion": 3,
+  "coreCommit": "64b5b5075076c571606dfc65eeebc29886717980",
   "toolchain": {
     "emscripten": "6.0.5",
     "protobuf": "3.21.6"
@@ -10,19 +10,24 @@
     "metadata-v2",
     "row-group-layout-v1",
     "generic-page-v1",
+    "rows-v1",
+    "filter-v1",
+    "default-rows-100",
+    "max-rows-500",
     "type-inventory-20-v1",
     "portable-nested-v1",
+    "inactive-compression-metadata-v1",
     "range-io-v1",
     "cancellation-v1"
   ],
   "artifacts": {
     "pixels-inspector-wasm.cjs": {
-      "bytes": 12400,
-      "sha256": "e5431a7c4e59da2cdba85a70f364957bc45f54ffc35d886858010de04d93840e"
+      "bytes": 12634,
+      "sha256": "58b60ac07a34aa5bd45af69abf5f5d1caa24dbac73833dcfe3d8819052681868"
     },
     "pixels-inspector-wasm.wasm": {
-      "bytes": 245277,
-      "sha256": "faeecfac4a8874d52b596673638540da43e206046e0e825fa8bcb0bd17e4f0dd"
+      "bytes": 334081,
+      "sha256": "478b610646d20b3e3d5e83e2a71ce7918d0ec7cc412ec6c39868d8d7fffe3609"
     }
   }
 }

@@ -7,8 +7,22 @@ export const repositoryRoot = path.resolve(
 );
 export const coreRoot = path.join(repositoryRoot, "third_party", "pixels");
 export const coreCommit =
-  "29935ea7e8b939e38005e735b5030f192cb5e7be";
-export const coreAbi = 2;
+  "64b5b5075076c571606dfc65eeebc29886717980";
+export const coreAbi = 3;
+export const coreCapabilities = Object.freeze([
+  "metadata-v2",
+  "row-group-layout-v1",
+  "generic-page-v1",
+  "rows-v1",
+  "filter-v1",
+  "default-rows-100",
+  "max-rows-500",
+  "type-inventory-20-v1",
+  "portable-nested-v1",
+  "inactive-compression-metadata-v1",
+  "range-io-v1",
+  "cancellation-v1",
+]);
 export const protobufVersion = "3.21.6";
 export const nativeBuild = path.join(repositoryRoot, "build", "core-native");
 export const wasmBuild = path.join(repositoryRoot, "build", "core-wasm");

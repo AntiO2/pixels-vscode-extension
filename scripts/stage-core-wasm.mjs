@@ -4,6 +4,7 @@ import path from "node:path";
 
 import {
   coreAbi,
+  coreCapabilities,
   builtLoaderFileName,
   coreCommit,
   coreRoot,
@@ -66,15 +67,7 @@ const manifest = {
     emscripten: emscriptenVersion,
     protobuf: protobufVersion,
   },
-  capabilities: [
-    "metadata-v2",
-    "row-group-layout-v1",
-    "generic-page-v1",
-    "type-inventory-20-v1",
-    "portable-nested-v1",
-    "range-io-v1",
-    "cancellation-v1",
-  ],
+  capabilities: coreCapabilities,
   artifacts,
 };
 const temporaryManifest = `${manifestPath}.tmp`;
