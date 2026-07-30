@@ -40,7 +40,7 @@ type WorkerState =
 
 interface ActiveOperation {
   readonly requestId: string;
-  readonly operation: "metadata" | "page";
+  readonly operation: "metadata" | "rowGroup" | "page";
 }
 
 async function sha256(bytes: Uint8Array): Promise<string> {
@@ -97,6 +97,9 @@ export class InspectorWorkerCore {
         return;
       case "inspectPage":
         this.inspectPage(message);
+        return;
+      case "inspectRowGroup":
+        this.inspectRowGroup(message);
         return;
       case "supplyRange":
         this.supplyRange(message.requestId, message.offset, message.bytes);
@@ -177,7 +180,7 @@ export class InspectorWorkerCore {
   private inspectPage(
     message: Extract<ControllerMessage, { kind: "inspectPage" }>,
   ): void {
-    this.requireState("metadataReady");
+    this.requireResultState();
     this.active = {
       requestId: message.requestId,
       operation: "page",
@@ -189,6 +192,19 @@ export class InspectorWorkerCore {
         parseUnsignedDecimal(message.rowOffset, "rowOffset"),
         message.rowCount,
       ),
+    );
+  }
+
+  private inspectRowGroup(
+    message: Extract<ControllerMessage, { kind: "inspectRowGroup" }>,
+  ): void {
+    this.requireResultState();
+    this.active = {
+      requestId: message.requestId,
+      operation: "rowGroup",
+    };
+    this.emitStep(
+      this.requireClient().beginRowGroup(message.rowGroup),
     );
   }
 
@@ -281,6 +297,15 @@ export class InspectorWorkerCore {
 
   private requireState(expected: WorkerState): void {
     if (this.state !== expected) {
+      throw new InspectorError(
+        "INVALID_MESSAGE",
+        `worker state ${this.state} does not allow this operation`,
+      );
+    }
+  }
+
+  private requireResultState(): void {
+    if (this.state !== "metadataReady" && this.state !== "pageReady") {
       throw new InspectorError(
         "INVALID_MESSAGE",
         `worker state ${this.state} does not allow this operation`,

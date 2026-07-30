@@ -105,6 +105,13 @@ export class WasmInspectorClient {
     );
   }
 
+  public beginRowGroup(rowGroup: number): WasmStep {
+    this.requireSession();
+    return this.step(
+      this.module._pixels_inspector_begin_row_group(this.handle, rowGroup),
+    );
+  }
+
   public supplyRange(offset: bigint, bytes: Uint8Array): WasmStep {
     this.requireSession();
     const pointer = this.module._malloc(bytes.byteLength);

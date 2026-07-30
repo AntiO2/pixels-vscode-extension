@@ -1,13 +1,14 @@
 {
   "schemaVersion": 1,
   "abiVersion": 2,
-  "coreCommit": "d4d02d385133991a024ed08c18a2b834f0b94572",
+  "coreCommit": "8db4256f6f31dbf82545e8345ad2bb9d9ecf10e8",
   "toolchain": {
     "emscripten": "6.0.5",
     "protobuf": "3.21.6"
   },
   "capabilities": [
-    "metadata-v1",
+    "metadata-v2",
+    "row-group-layout-v1",
     "generic-page-v1",
     "type-inventory-20-v1",
     "portable-nested-v1",
@@ -16,12 +17,12 @@
   ],
   "artifacts": {
     "pixels-inspector-wasm.cjs": {
-      "bytes": 12271,
-      "sha256": "69e0e0ef8da69a2b53992d334b23bd094352c9494a3213689c50eba185aefbce"
+      "bytes": 12400,
+      "sha256": "e5431a7c4e59da2cdba85a70f364957bc45f54ffc35d886858010de04d93840e"
     },
     "pixels-inspector-wasm.wasm": {
-      "bytes": 234916,
-      "sha256": "ddf79e7c0fa6df6cfb173a454b498ba85e22c4133f07bae076228088f04fda9e"
+      "bytes": 245277,
+      "sha256": "faeecfac4a8874d52b596673638540da43e206046e0e825fa8bcb0bd17e4f0dd"
     }
   }
 }

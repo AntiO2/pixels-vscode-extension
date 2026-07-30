@@ -2,6 +2,8 @@ import {
   InspectorError,
   decodeControllerMessage,
   decodeCoreManifest,
+  decodeMetadataResultJson,
+  decodePageResultJson,
   decodeWorkerMessage,
   parseUnsignedDecimal,
 } from "@pixels-inspector/protocol-client";
@@ -69,6 +71,30 @@ describe("worker protocol boundary", () => {
         bytes: new Uint8Array([1, 2]),
       }),
     ).toThrow("ArrayBuffer");
+  });
+
+  it("decodes row-group requests and validates Core result models", () => {
+    expect(
+      decodeControllerMessage({
+        kind: "inspectRowGroup",
+        requestId: "r2",
+        rowGroup: 3,
+      }),
+    ).toEqual({
+      kind: "inspectRowGroup",
+      requestId: "r2",
+      rowGroup: 3,
+    });
+    expect(() =>
+      decodeMetadataResultJson(
+        '{"abi":2,"schema":[],"rowGroups":[]}',
+      ),
+    ).toThrow(InspectorError);
+    expect(() =>
+      decodePageResultJson(
+        '{"rowGroup":0,"column":0,"offset":0,"count":2,"values":[true]}',
+      ),
+    ).toThrow("count");
   });
 
   it("rejects malformed manifests and worker result operations", () => {

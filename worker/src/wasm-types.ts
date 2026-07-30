@@ -11,6 +11,10 @@ export interface EmscriptenInspectorModule {
   _pixels_inspector_create(fileSize: bigint, handlePointer: number): number;
   _pixels_inspector_destroy(handle: number): number;
   _pixels_inspector_begin_metadata(handle: number): number;
+  _pixels_inspector_begin_row_group(
+    handle: number,
+    rowGroup: number,
+  ): number;
   _pixels_inspector_begin_page(
     handle: number,
     rowGroup: number,

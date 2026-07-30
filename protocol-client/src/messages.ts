@@ -39,6 +39,12 @@ export interface InspectPageMessage extends MessageBase {
   readonly rowCount: number;
 }
 
+export interface InspectRowGroupMessage extends MessageBase {
+  readonly kind: "inspectRowGroup";
+  readonly requestId: string;
+  readonly rowGroup: number;
+}
+
 export interface SupplyRangeMessage extends MessageBase {
   readonly kind: "supplyRange";
   readonly requestId: string;
@@ -58,6 +64,7 @@ export interface DisposeMessage extends MessageBase {
 export type ControllerMessage =
   | InitializeMessage
   | InspectMetadataMessage
+  | InspectRowGroupMessage
   | InspectPageMessage
   | SupplyRangeMessage
   | CancelMessage
@@ -82,7 +89,7 @@ export interface RangeNeededMessage extends MessageBase {
 export interface ResultMessage extends MessageBase {
   readonly kind: "result";
   readonly requestId: string;
-  readonly operation: "metadata" | "page";
+  readonly operation: "metadata" | "rowGroup" | "page";
   readonly json: string;
 }
 
@@ -194,6 +201,12 @@ export function decodeControllerMessage(value: unknown): ControllerMessage {
         rowCount: integerField(value, "rowCount"),
       };
     }
+    case "inspectRowGroup":
+      return {
+        kind,
+        requestId: stringField(value, "requestId"),
+        rowGroup: integerField(value, "rowGroup"),
+      };
     case "supplyRange": {
       const offset = stringField(value, "offset");
       parseUnsignedDecimal(offset, "offset");
@@ -257,7 +270,11 @@ export function decodeWorkerMessage(value: unknown): WorkerMessage {
     }
     case "result": {
       const operation = stringField(value, "operation");
-      if (operation !== "metadata" && operation !== "page") {
+      if (
+        operation !== "metadata" &&
+        operation !== "rowGroup" &&
+        operation !== "page"
+      ) {
         throw new InspectorError(
           "INVALID_MESSAGE",
           "result operation is invalid",

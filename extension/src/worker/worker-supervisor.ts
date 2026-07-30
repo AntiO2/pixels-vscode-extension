@@ -3,6 +3,9 @@ import {
   MAX_RANGE_BYTES,
   PROTOCOL_VERSION,
   InspectorError,
+  decodeMetadataResultJson,
+  decodePageResultJson,
+  decodeRowGroupResultJson,
   decodeWorkerMessage,
   parseUnsignedDecimal,
   toInspectorError,
@@ -10,6 +13,9 @@ import {
 import type {
   CoreCapabilities,
   CoreManifest,
+  MetadataResult,
+  PageResult,
+  RowGroupResult,
   ControllerMessage,
   ErrorMessage,
   RangeNeededMessage,
@@ -81,16 +87,18 @@ export class WorkerSupervisor {
     await this.spawn();
   }
 
-  public async inspectMetadata(source: RangeSource): Promise<string> {
+  public async inspectMetadata(source: RangeSource): Promise<MetadataResult> {
     await this.initialize();
-    return await this.startOperation(
-      source,
-      "metadata",
-      (requestId) => ({
-        kind: "inspectMetadata",
-        requestId,
-        sourceSize: source.size.toString(),
-      }),
+    return decodeMetadataResultJson(
+      await this.startOperation(
+        source,
+        "metadata",
+        (requestId) => ({
+          kind: "inspectMetadata",
+          requestId,
+          sourceSize: source.size.toString(),
+        }),
+      ),
     );
   }
 
@@ -102,19 +110,39 @@ export class WorkerSupervisor {
       readonly rowOffset: bigint;
       readonly rowCount: number;
     },
-  ): Promise<string> {
+  ): Promise<PageResult> {
     await this.initialize();
-    return await this.startOperation(
-      source,
-      "page",
-      (requestId) => ({
-        kind: "inspectPage",
-        requestId,
-        rowGroup: options.rowGroup,
-        column: options.column,
-        rowOffset: options.rowOffset.toString(),
-        rowCount: options.rowCount,
-      }),
+    return decodePageResultJson(
+      await this.startOperation(
+        source,
+        "page",
+        (requestId) => ({
+          kind: "inspectPage",
+          requestId,
+          rowGroup: options.rowGroup,
+          column: options.column,
+          rowOffset: options.rowOffset.toString(),
+          rowCount: options.rowCount,
+        }),
+      ),
+    );
+  }
+
+  public async inspectRowGroup(
+    source: RangeSource,
+    rowGroup: number,
+  ): Promise<RowGroupResult> {
+    await this.initialize();
+    return decodeRowGroupResultJson(
+      await this.startOperation(
+        source,
+        "rowGroup",
+        (requestId) => ({
+          kind: "inspectRowGroup",
+          requestId,
+          rowGroup,
+        }),
+      ),
     );
   }
 

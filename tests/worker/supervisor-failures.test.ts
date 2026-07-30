@@ -41,6 +41,7 @@ const manifest: CoreManifest = {
 const capabilities = decodeCoreCapabilities({
   abi: 2,
   page: "generic-v1",
+  rowGroup: "layout-v1",
   types: Array.from({ length: 20 }, (_value, kind) => ({
     kind,
     name: `TYPE_${String(kind)}`,

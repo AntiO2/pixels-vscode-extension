@@ -9,6 +9,7 @@ export interface CoreTypeCapability {
 export interface CoreCapabilities {
   readonly abi: number;
   readonly page: "generic-v1";
+  readonly rowGroup: "layout-v1";
   readonly types: readonly CoreTypeCapability[];
   readonly encodings: readonly string[];
   readonly nested: "portable-v1";
@@ -30,6 +31,7 @@ export function decodeCoreCapabilities(value: unknown): CoreCapabilities {
   if (
     value["abi"] !== CORE_ABI_VERSION ||
     value["page"] !== "generic-v1" ||
+    value["rowGroup"] !== "layout-v1" ||
     value["nested"] !== "portable-v1" ||
     !Array.isArray(types) ||
     types.length !== 20 ||
@@ -71,6 +73,7 @@ export function decodeCoreCapabilities(value: unknown): CoreCapabilities {
   return {
     abi: CORE_ABI_VERSION,
     page: "generic-v1",
+    rowGroup: "layout-v1",
     types: decodedTypes,
     encodings,
     nested: "portable-v1",

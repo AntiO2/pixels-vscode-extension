@@ -67,7 +67,8 @@ const manifest = {
     protobuf: protobufVersion,
   },
   capabilities: [
-    "metadata-v1",
+    "metadata-v2",
+    "row-group-layout-v1",
     "generic-page-v1",
     "type-inventory-20-v1",
     "portable-nested-v1",

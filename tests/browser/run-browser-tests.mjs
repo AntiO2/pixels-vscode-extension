@@ -79,8 +79,8 @@ try {
   });
   if (
     result.generations !== 2 ||
-    result.rangeRequests !== 6 ||
-    result.transferredBytes !== "802"
+    result.rangeRequests !== 7 ||
+    result.transferredBytes !== "956"
   ) {
     throw new Error(
       `unexpected browser worker metrics: ${JSON.stringify(result)}`,

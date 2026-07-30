@@ -9,7 +9,11 @@ import { NodeFileRangeSource } from "../../extension/src/sources/node-file-range
 import type { RangeSource } from "../../extension/src/sources/range-source.js";
 import { NodeWorkerFactory } from "../../extension/src/worker/node-worker-transport.js";
 import { WorkerSupervisor } from "../../extension/src/worker/worker-supervisor.js";
-import { EXPECTED_METADATA, EXPECTED_PAGE } from "../fixtures/expected.js";
+import {
+  EXPECTED_METADATA,
+  EXPECTED_PAGE,
+  EXPECTED_ROW_GROUP,
+} from "../fixtures/expected.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const manifestPath = path.join(
@@ -56,8 +60,13 @@ describe("Node parser worker integration", () => {
     const source = await NodeFileRangeSource.open(fixturePath);
     const supervisor = await createSupervisor();
     try {
-      await expect(supervisor.inspectMetadata(source)).resolves.toBe(
-        EXPECTED_METADATA,
+      await expect(supervisor.inspectMetadata(source)).resolves.toEqual(
+        JSON.parse(EXPECTED_METADATA),
+      );
+      await expect(
+        supervisor.inspectRowGroup(source, 0),
+      ).resolves.toEqual(
+        JSON.parse(EXPECTED_ROW_GROUP),
       );
       await expect(
         supervisor.inspectPage(source, {
@@ -66,16 +75,16 @@ describe("Node parser worker integration", () => {
           rowOffset: 0n,
           rowCount: 10,
         }),
-      ).resolves.toBe(EXPECTED_PAGE);
+      ).resolves.toEqual(JSON.parse(EXPECTED_PAGE));
       expect(supervisor.metrics).toMatchObject({
         generations: 1,
-        rangeRequests: 4,
-        transferredBytes: 518n,
+        rangeRequests: 5,
+        transferredBytes: 672n,
       });
 
       await supervisor.restart();
-      await expect(supervisor.inspectMetadata(source)).resolves.toBe(
-        EXPECTED_METADATA,
+      await expect(supervisor.inspectMetadata(source)).resolves.toEqual(
+        JSON.parse(EXPECTED_METADATA),
       );
       expect(supervisor.metrics.generations).toBe(2);
     } finally {
@@ -123,8 +132,8 @@ describe("Node parser worker integration", () => {
       await supervisor.cancelActive();
       await cancelled;
       expect(supervisor.metrics.generations).toBe(2);
-      await expect(supervisor.inspectMetadata(base)).resolves.toBe(
-        EXPECTED_METADATA,
+      await expect(supervisor.inspectMetadata(base)).resolves.toEqual(
+        JSON.parse(EXPECTED_METADATA),
       );
     } finally {
       await supervisor.dispose();

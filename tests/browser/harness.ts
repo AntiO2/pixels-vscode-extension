@@ -5,12 +5,17 @@ import {
 import { BufferRangeSource } from "../../extension/src/sources/buffer-range-source.js";
 import { BrowserWorkerFactory } from "../../extension/src/worker/browser-worker-transport.js";
 import { WorkerSupervisor } from "../../extension/src/worker/worker-supervisor.js";
-import { EXPECTED_METADATA, EXPECTED_PAGE } from "../fixtures/expected.js";
+import {
+  EXPECTED_METADATA,
+  EXPECTED_PAGE,
+  EXPECTED_ROW_GROUP,
+} from "../fixtures/expected.js";
 
 const BROWSER_SOURCE_LIMIT = 64n * 1024n * 1024n;
 
 interface BrowserValidationResult {
   readonly metadata: string;
+  readonly rowGroup: string;
   readonly page: string;
   readonly coreDigest: string;
   readonly generations: number;
@@ -63,23 +68,35 @@ async function run(): Promise<BrowserValidationResult> {
   try {
     await supervisor.initialize();
     const initializedAt = performance.now();
-    const metadata = await supervisor.inspectMetadata(source);
+    const metadata = JSON.stringify(
+      await supervisor.inspectMetadata(source),
+    );
     if (metadata !== EXPECTED_METADATA) {
       throw new Error("browser metadata differs from the native golden");
     }
+    const rowGroup = JSON.stringify(
+      await supervisor.inspectRowGroup(source, 0),
+    );
+    if (rowGroup !== EXPECTED_ROW_GROUP) {
+      throw new Error("browser row-group layout differs from the native golden");
+    }
     const pageStartedAt = performance.now();
-    const page = await supervisor.inspectPage(source, {
-      rowGroup: 0,
-      column: 0,
-      rowOffset: 0n,
-      rowCount: 10,
-    });
+    const page = JSON.stringify(
+      await supervisor.inspectPage(source, {
+        rowGroup: 0,
+        column: 0,
+        rowOffset: 0n,
+        rowCount: 10,
+      }),
+    );
     const pageCompletedAt = performance.now();
     if (page !== EXPECTED_PAGE) {
       throw new Error("browser page differs from the native golden");
     }
     await supervisor.restart();
-    const recreatedMetadata = await supervisor.inspectMetadata(source);
+    const recreatedMetadata = JSON.stringify(
+      await supervisor.inspectMetadata(source),
+    );
     if (recreatedMetadata !== EXPECTED_METADATA) {
       throw new Error("recreated browser worker returned different metadata");
     }
@@ -90,6 +107,7 @@ async function run(): Promise<BrowserValidationResult> {
     }
     return {
       metadata,
+      rowGroup,
       page,
       coreDigest: wasmArtifact.sha256,
       generations: supervisor.metrics.generations,
