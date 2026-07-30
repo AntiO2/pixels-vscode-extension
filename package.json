@@ -2,9 +2,14 @@
   "name": "pixels-vscode-extension",
   "displayName": "Pixels PXL Inspector",
   "description": "Inspect Pixels PXL files with the portable Pixels Core.",
+  "icon": "resources/icon.png",
   "version": "0.1.0",
   "publisher": "AntiO2",
   "license": "AGPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AntiO2/pixels-vscode-extension.git"
+  },
   "private": true,
   "type": "module",
   "main": "./dist/extension/node.cjs",
