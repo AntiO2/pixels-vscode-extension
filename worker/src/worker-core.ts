@@ -40,7 +40,7 @@ type WorkerState =
 
 interface ActiveOperation {
   readonly requestId: string;
-  readonly operation: "metadata" | "plainLongPage";
+  readonly operation: "metadata" | "page";
 }
 
 async function sha256(bytes: Uint8Array): Promise<string> {
@@ -95,8 +95,8 @@ export class InspectorWorkerCore {
       case "inspectMetadata":
         this.inspectMetadata(message.requestId, message.sourceSize);
         return;
-      case "inspectPlainLongPage":
-        this.inspectPlainLongPage(message);
+      case "inspectPage":
+        this.inspectPage(message);
         return;
       case "supplyRange":
         this.supplyRange(message.requestId, message.offset, message.bytes);
@@ -157,6 +157,7 @@ export class InspectorWorkerCore {
       generation: message.generation,
       abi: this.client.abiVersion,
       coreDigest: artifact.sha256,
+      capabilities: this.client.capabilities,
     });
   }
 
@@ -173,16 +174,16 @@ export class InspectorWorkerCore {
     );
   }
 
-  private inspectPlainLongPage(
-    message: Extract<ControllerMessage, { kind: "inspectPlainLongPage" }>,
+  private inspectPage(
+    message: Extract<ControllerMessage, { kind: "inspectPage" }>,
   ): void {
     this.requireState("metadataReady");
     this.active = {
       requestId: message.requestId,
-      operation: "plainLongPage",
+      operation: "page",
     };
     this.emitStep(
-      this.requireClient().beginPlainLongPage(
+      this.requireClient().beginPage(
         message.rowGroup,
         message.column,
         parseUnsignedDecimal(message.rowOffset, "rowOffset"),

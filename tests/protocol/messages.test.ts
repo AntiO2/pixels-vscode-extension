@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 
 const manifest = {
   schemaVersion: 1,
-  abiVersion: 1,
+  abiVersion: 2,
   coreCommit: "8".repeat(40),
   toolchain: {
     emscripten: "6.0.5",

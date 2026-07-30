@@ -4,6 +4,7 @@ import type {
 } from "@pixels-inspector/protocol-client";
 import {
   PROTOCOL_VERSION,
+  decodeCoreCapabilities,
 } from "@pixels-inspector/protocol-client";
 import { describe, expect, it, vi } from "vitest";
 
@@ -22,7 +23,7 @@ type FailureMode =
 
 const manifest: CoreManifest = {
   schemaVersion: 1,
-  abiVersion: 1,
+  abiVersion: 2,
   coreCommit: "7".repeat(40),
   toolchain: {
     emscripten: "6.0.5",
@@ -36,6 +37,17 @@ const manifest: CoreManifest = {
     },
   },
 };
+
+const capabilities = decodeCoreCapabilities({
+  abi: 2,
+  page: "generic-v1",
+  types: Array.from({ length: 20 }, (_value, kind) => ({
+    kind,
+    name: `TYPE_${String(kind)}`,
+  })),
+  encodings: ["NONE"],
+  nested: "portable-v1",
+});
 
 class FakeTransport implements WorkerTransport {
   private readonly messageListeners =
@@ -55,8 +67,9 @@ class FakeTransport implements WorkerTransport {
           kind: "ready",
           version: PROTOCOL_VERSION,
           generation: message.generation,
-          abi: this.mode === "abiMismatch" ? 2 : 1,
+          abi: this.mode === "abiMismatch" ? 1 : 2,
           coreDigest: "a".repeat(64),
+          capabilities,
         });
       });
       return;

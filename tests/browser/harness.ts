@@ -68,7 +68,7 @@ async function run(): Promise<BrowserValidationResult> {
       throw new Error("browser metadata differs from the native golden");
     }
     const pageStartedAt = performance.now();
-    const page = await supervisor.inspectPlainLongPage(source, {
+    const page = await supervisor.inspectPage(source, {
       rowGroup: 0,
       column: 0,
       rowOffset: 0n,

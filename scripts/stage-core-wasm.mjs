@@ -68,7 +68,9 @@ const manifest = {
   },
   capabilities: [
     "metadata-v1",
-    "plain-long-page-v1",
+    "generic-page-v1",
+    "type-inventory-20-v1",
+    "portable-nested-v1",
     "range-io-v1",
     "cancellation-v1",
   ],

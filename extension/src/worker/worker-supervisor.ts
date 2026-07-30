@@ -8,6 +8,7 @@ import {
   toInspectorError,
 } from "@pixels-inspector/protocol-client";
 import type {
+  CoreCapabilities,
   CoreManifest,
   ControllerMessage,
   ErrorMessage,
@@ -51,6 +52,7 @@ export class WorkerSupervisor {
   private initialized = false;
   private rangeRequests = 0;
   private transferredBytes = 0n;
+  private coreCapabilities: CoreCapabilities | undefined;
 
   public constructor(
     private readonly factory: WorkerFactory,
@@ -65,6 +67,10 @@ export class WorkerSupervisor {
       rangeRequests: this.rangeRequests,
       transferredBytes: this.transferredBytes,
     });
+  }
+
+  public get capabilities(): CoreCapabilities | undefined {
+    return this.coreCapabilities;
   }
 
   public async initialize(): Promise<void> {
@@ -88,7 +94,7 @@ export class WorkerSupervisor {
     );
   }
 
-  public async inspectPlainLongPage(
+  public async inspectPage(
     source: RangeSource,
     options: {
       readonly rowGroup: number;
@@ -100,9 +106,9 @@ export class WorkerSupervisor {
     await this.initialize();
     return await this.startOperation(
       source,
-      "plainLongPage",
+      "page",
       (requestId) => ({
-        kind: "inspectPlainLongPage",
+        kind: "inspectPage",
         requestId,
         rowGroup: options.rowGroup,
         column: options.column,
@@ -187,6 +193,7 @@ export class WorkerSupervisor {
           detachMessage();
           detachError();
           this.initialized = true;
+          this.coreCapabilities = message.capabilities;
           resolve();
         } catch (error) {
           clearTimeout(timeout);

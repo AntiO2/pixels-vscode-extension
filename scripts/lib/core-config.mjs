@@ -7,8 +7,8 @@ export const repositoryRoot = path.resolve(
 );
 export const coreRoot = path.join(repositoryRoot, "third_party", "pixels");
 export const coreCommit =
-  "1afd795869c4133085de2137e466cf107793f368";
-export const coreAbi = 1;
+  "d4d02d385133991a024ed08c18a2b834f0b94572";
+export const coreAbi = 2;
 export const protobufVersion = "3.21.6";
 export const nativeBuild = path.join(repositoryRoot, "build", "core-native");
 export const wasmBuild = path.join(repositoryRoot, "build", "core-wasm");

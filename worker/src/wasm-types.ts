@@ -3,10 +3,15 @@ export interface EmscriptenInspectorModule {
   _malloc(size: number): number;
   _free(pointer: number): void;
   _pixels_inspector_abi_version(): number;
+  _pixels_inspector_capabilities_size(sizePointer: number): number;
+  _pixels_inspector_copy_capabilities(
+    destination: number,
+    destinationSize: bigint,
+  ): number;
   _pixels_inspector_create(fileSize: bigint, handlePointer: number): number;
   _pixels_inspector_destroy(handle: number): number;
   _pixels_inspector_begin_metadata(handle: number): number;
-  _pixels_inspector_begin_plain_long_page(
+  _pixels_inspector_begin_page(
     handle: number,
     rowGroup: number,
     column: number,

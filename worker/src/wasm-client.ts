@@ -1,7 +1,11 @@
 import {
   CORE_ABI_VERSION,
   InspectorError,
+  decodeCoreCapabilities,
   toSafeLength,
+} from "@pixels-inspector/protocol-client";
+import type {
+  CoreCapabilities,
 } from "@pixels-inspector/protocol-client";
 
 import type { EmscriptenInspectorModule } from "./wasm-types.js";
@@ -41,6 +45,7 @@ export type WasmStep = WasmRangeStep | WasmResultStep;
 
 export class WasmInspectorClient {
   private readonly scratchPointer: number;
+  public readonly capabilities: CoreCapabilities;
   private handle = 0;
 
   public constructor(private readonly module: EmscriptenInspectorModule) {
@@ -53,6 +58,12 @@ export class WasmInspectorClient {
     this.scratchPointer = module._malloc(16);
     if (this.scratchPointer === 0) {
       throw new InspectorError("CORE_ERROR", "unable to allocate ABI scratch memory");
+    }
+    try {
+      this.capabilities = this.readCapabilities();
+    } catch (error) {
+      module._free(this.scratchPointer);
+      throw error;
     }
   }
 
@@ -76,7 +87,7 @@ export class WasmInspectorClient {
     );
   }
 
-  public beginPlainLongPage(
+  public beginPage(
     rowGroup: number,
     column: number,
     rowOffset: bigint,
@@ -84,7 +95,7 @@ export class WasmInspectorClient {
   ): WasmStep {
     this.requireSession();
     return this.step(
-      this.module._pixels_inspector_begin_plain_long_page(
+      this.module._pixels_inspector_begin_page(
         this.handle,
         rowGroup,
         column,
@@ -203,6 +214,50 @@ export class WasmInspectorClient {
       return new TextDecoder("utf-8", { fatal: true }).decode(
         this.module.HEAPU8.slice(pointer, pointer + safeLength),
       );
+    } finally {
+      this.module._free(pointer);
+    }
+  }
+
+  private readCapabilities(): CoreCapabilities {
+    this.requireStatus(
+      this.module._pixels_inspector_capabilities_size(
+        this.scratchPointer,
+      ),
+      STATUS_OK,
+      "read capability size",
+    );
+    const length = this.dataView(8).getBigUint64(0, true);
+    const safeLength = toSafeLength(length, "Core capability length");
+    const pointer = this.module._malloc(safeLength);
+    if (safeLength > 0 && pointer === 0) {
+      throw new InspectorError(
+        "CORE_ERROR",
+        "unable to allocate Core capability buffer",
+      );
+    }
+    try {
+      this.requireStatus(
+        this.module._pixels_inspector_copy_capabilities(
+          pointer,
+          length,
+        ),
+        STATUS_OK,
+        "copy capabilities",
+      );
+      const json = new TextDecoder("utf-8", { fatal: true }).decode(
+        this.module.HEAPU8.slice(pointer, pointer + safeLength),
+      );
+      try {
+        return decodeCoreCapabilities(JSON.parse(json));
+      } catch (error) {
+        throw new InspectorError(
+          "CORE_ERROR",
+          "Core returned invalid capabilities",
+          false,
+          { cause: error },
+        );
+      }
     } finally {
       this.module._free(pointer);
     }

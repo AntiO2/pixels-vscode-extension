@@ -60,7 +60,7 @@ describe("Node parser worker integration", () => {
         EXPECTED_METADATA,
       );
       await expect(
-        supervisor.inspectPlainLongPage(source, {
+        supervisor.inspectPage(source, {
           rowGroup: 0,
           column: 0,
           rowOffset: 0n,

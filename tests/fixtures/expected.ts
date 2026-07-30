@@ -1,5 +1,5 @@
 export const EXPECTED_METADATA =
-  '{"abi":1,"version":1,"magic":"PIXELS","rows":10,' +
+  '{"abi":2,"version":1,"magic":"PIXELS","rows":10,' +
   '"pixelStride":10000,"schemaCount":4,"rowGroupCount":1,' +
   '"firstColumn":{"name":"id","kind":4}}';
 

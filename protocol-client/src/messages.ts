@@ -1,4 +1,6 @@
 import { PROTOCOL_VERSION } from "./constants.js";
+import type { CoreCapabilities } from "./capabilities.js";
+import { decodeCoreCapabilities } from "./capabilities.js";
 import { InspectorError } from "./errors.js";
 import type { CoreManifest } from "./manifest.js";
 import { decodeCoreManifest } from "./manifest.js";
@@ -28,8 +30,8 @@ export interface InspectMetadataMessage extends MessageBase {
   readonly sourceSize: string;
 }
 
-export interface InspectPlainLongPageMessage extends MessageBase {
-  readonly kind: "inspectPlainLongPage";
+export interface InspectPageMessage extends MessageBase {
+  readonly kind: "inspectPage";
   readonly requestId: string;
   readonly rowGroup: number;
   readonly column: number;
@@ -56,7 +58,7 @@ export interface DisposeMessage extends MessageBase {
 export type ControllerMessage =
   | InitializeMessage
   | InspectMetadataMessage
-  | InspectPlainLongPageMessage
+  | InspectPageMessage
   | SupplyRangeMessage
   | CancelMessage
   | DisposeMessage;
@@ -67,6 +69,7 @@ export interface ReadyMessage extends MessageBase {
   readonly generation: number;
   readonly abi: number;
   readonly coreDigest: string;
+  readonly capabilities: CoreCapabilities;
 }
 
 export interface RangeNeededMessage extends MessageBase {
@@ -79,7 +82,7 @@ export interface RangeNeededMessage extends MessageBase {
 export interface ResultMessage extends MessageBase {
   readonly kind: "result";
   readonly requestId: string;
-  readonly operation: "metadata" | "plainLongPage";
+  readonly operation: "metadata" | "page";
   readonly json: string;
 }
 
@@ -179,7 +182,7 @@ export function decodeControllerMessage(value: unknown): ControllerMessage {
         sourceSize,
       };
     }
-    case "inspectPlainLongPage": {
+    case "inspectPage": {
       const rowOffset = stringField(value, "rowOffset");
       parseUnsignedDecimal(rowOffset, "rowOffset");
       return {
@@ -237,6 +240,7 @@ export function decodeWorkerMessage(value: unknown): WorkerMessage {
         generation: integerField(value, "generation"),
         abi: integerField(value, "abi"),
         coreDigest: stringField(value, "coreDigest"),
+        capabilities: decodeCoreCapabilities(value["capabilities"]),
       };
     }
     case "rangeNeeded": {
@@ -253,7 +257,7 @@ export function decodeWorkerMessage(value: unknown): WorkerMessage {
     }
     case "result": {
       const operation = stringField(value, "operation");
-      if (operation !== "metadata" && operation !== "plainLongPage") {
+      if (operation !== "metadata" && operation !== "page") {
         throw new InspectorError(
           "INVALID_MESSAGE",
           "result operation is invalid",
