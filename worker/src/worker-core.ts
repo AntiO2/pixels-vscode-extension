@@ -40,7 +40,7 @@ type WorkerState =
 
 interface ActiveOperation {
   readonly requestId: string;
-  readonly operation: "metadata" | "rowGroup" | "page";
+  readonly operation: "metadata" | "rowGroup" | "page" | "rows" | "filter";
 }
 
 async function sha256(bytes: Uint8Array): Promise<string> {
@@ -97,6 +97,12 @@ export class InspectorWorkerCore {
         return;
       case "inspectPage":
         this.inspectPage(message);
+        return;
+      case "inspectRows":
+        this.inspectRows(message);
+        return;
+      case "inspectFilter":
+        this.inspectFilter(message);
         return;
       case "inspectRowGroup":
         this.inspectRowGroup(message);
@@ -205,6 +211,44 @@ export class InspectorWorkerCore {
     };
     this.emitStep(
       this.requireClient().beginRowGroup(message.rowGroup),
+    );
+  }
+
+  private inspectRows(
+    message: Extract<ControllerMessage, { kind: "inspectRows" }>,
+  ): void {
+    this.requireResultState();
+    this.active = {
+      requestId: message.requestId,
+      operation: "rows",
+    };
+    this.emitStep(
+      this.requireClient().beginRows(
+        message.rowGroup,
+        message.columns,
+        parseUnsignedDecimal(message.rowOffset, "rowOffset"),
+        message.rowCount,
+      ),
+    );
+  }
+
+  private inspectFilter(
+    message: Extract<ControllerMessage, { kind: "inspectFilter" }>,
+  ): void {
+    this.requireResultState();
+    this.active = {
+      requestId: message.requestId,
+      operation: "filter",
+    };
+    this.emitStep(
+      this.requireClient().beginFilter({
+        predicateColumn: message.predicate.column,
+        operator: message.predicate.operator,
+        literal: message.predicate.literal,
+        columns: message.columns,
+        ...(message.cursor === undefined ? {} : { cursor: message.cursor }),
+        limit: message.limit,
+      }),
     );
   }
 

@@ -22,6 +22,26 @@ export interface EmscriptenInspectorModule {
     rowOffset: bigint,
     rowCount: number,
   ): number;
+  _pixels_inspector_begin_rows(
+    handle: number,
+    rowGroup: number,
+    columnsPointer: number,
+    columnCount: number,
+    rowOffset: bigint,
+    rowCount: number,
+  ): number;
+  _pixels_inspector_begin_filter(
+    handle: number,
+    predicateColumn: number,
+    operator: number,
+    literalPointer: number,
+    literalSize: number,
+    columnsPointer: number,
+    columnCount: number,
+    cursorPointer: number,
+    cursorSize: number,
+    limit: number,
+  ): number;
   _pixels_inspector_next_range(
     handle: number,
     offsetPointer: number,

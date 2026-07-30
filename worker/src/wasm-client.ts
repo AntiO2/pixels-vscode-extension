@@ -6,6 +6,7 @@ import {
 } from "@pixels-inspector/protocol-client";
 import type {
   CoreCapabilities,
+  FilterOperator,
 } from "@pixels-inspector/protocol-client";
 
 import type { EmscriptenInspectorModule } from "./wasm-types.js";
@@ -14,6 +15,19 @@ const STATUS_OK = 0;
 const STATUS_RANGE_READY = 1;
 const STATUS_RESULT_READY = 2;
 const STATUS_CANCELLED = 108;
+
+const FILTER_OPERATORS: Readonly<Record<FilterOperator, number>> =
+  Object.freeze({
+    eq: 0,
+    ne: 1,
+    lt: 2,
+    le: 3,
+    gt: 4,
+    ge: 5,
+    isNull: 6,
+    isNotNull: 7,
+    contains: 8,
+  });
 
 const STATUS_NAMES: Readonly<Record<number, string>> = Object.freeze({
   100: "INVALID_ARGUMENT",
@@ -112,6 +126,60 @@ export class WasmInspectorClient {
     );
   }
 
+  public beginRows(
+    rowGroup: number,
+    columns: readonly number[],
+    rowOffset: bigint,
+    rowCount: number,
+  ): WasmStep {
+    this.requireSession();
+    return this.withColumns(columns, (columnsPointer) =>
+      this.step(
+        this.module._pixels_inspector_begin_rows(
+          this.handle,
+          rowGroup,
+          columnsPointer,
+          columns.length,
+          rowOffset,
+          rowCount,
+        ),
+      ),
+    );
+  }
+
+  public beginFilter(options: {
+    readonly predicateColumn: number;
+    readonly operator: FilterOperator;
+    readonly literal: string;
+    readonly columns: readonly number[];
+    readonly cursor?: string;
+    readonly limit: number;
+  }): WasmStep {
+    this.requireSession();
+    const literal = new TextEncoder().encode(options.literal);
+    const cursor = new TextEncoder().encode(options.cursor ?? "");
+    return this.withBytes(literal, (literalPointer) =>
+      this.withColumns(options.columns, (columnsPointer) =>
+        this.withBytes(cursor, (cursorPointer) =>
+          this.step(
+            this.module._pixels_inspector_begin_filter(
+              this.handle,
+              options.predicateColumn,
+              FILTER_OPERATORS[options.operator],
+              literalPointer,
+              literal.byteLength,
+              columnsPointer,
+              options.columns.length,
+              cursorPointer,
+              cursor.byteLength,
+              options.limit,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   public supplyRange(offset: bigint, bytes: Uint8Array): WasmStep {
     this.requireSession();
     const pointer = this.module._malloc(bytes.byteLength);
@@ -161,6 +229,40 @@ export class WasmInspectorClient {
   public dispose(): void {
     this.destroySession();
     this.module._free(this.scratchPointer);
+  }
+
+  private withColumns<T>(
+    columns: readonly number[],
+    operation: (pointer: number) => T,
+  ): T {
+    const bytes = new Uint8Array(columns.length * Uint32Array.BYTES_PER_ELEMENT);
+    const view = new DataView(bytes.buffer);
+    columns.forEach((column, index) => {
+      view.setUint32(index * Uint32Array.BYTES_PER_ELEMENT, column, true);
+    });
+    return this.withBytes(bytes, operation);
+  }
+
+  private withBytes<T>(
+    bytes: Uint8Array,
+    operation: (pointer: number) => T,
+  ): T {
+    if (bytes.byteLength === 0) {
+      return operation(0);
+    }
+    const pointer = this.module._malloc(bytes.byteLength);
+    if (pointer === 0) {
+      throw new InspectorError(
+        "CORE_ERROR",
+        "unable to allocate ABI input memory",
+      );
+    }
+    try {
+      this.module.HEAPU8.set(bytes, pointer);
+      return operation(pointer);
+    } finally {
+      this.module._free(pointer);
+    }
   }
 
   private step(status: number): WasmStep {

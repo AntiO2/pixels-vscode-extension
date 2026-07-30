@@ -1,4 +1,10 @@
-import { PROTOCOL_VERSION } from "./constants.js";
+import {
+  MAX_FILTER_CURSOR_BYTES,
+  MAX_FILTER_LITERAL_BYTES,
+  MAX_OPERATION_ROWS,
+  MAX_PROJECTION_COLUMNS,
+  PROTOCOL_VERSION,
+} from "./constants.js";
 import type { CoreCapabilities } from "./capabilities.js";
 import { decodeCoreCapabilities } from "./capabilities.js";
 import { InspectorError } from "./errors.js";
@@ -39,6 +45,39 @@ export interface InspectPageMessage extends MessageBase {
   readonly rowCount: number;
 }
 
+export interface InspectRowsMessage extends MessageBase {
+  readonly kind: "inspectRows";
+  readonly requestId: string;
+  readonly rowGroup: number;
+  readonly columns: readonly number[];
+  readonly rowOffset: string;
+  readonly rowCount: number;
+}
+
+export type FilterOperator =
+  | "eq"
+  | "ne"
+  | "lt"
+  | "le"
+  | "gt"
+  | "ge"
+  | "isNull"
+  | "isNotNull"
+  | "contains";
+
+export interface InspectFilterMessage extends MessageBase {
+  readonly kind: "inspectFilter";
+  readonly requestId: string;
+  readonly predicate: {
+    readonly column: number;
+    readonly operator: FilterOperator;
+    readonly literal: string;
+  };
+  readonly columns: readonly number[];
+  readonly cursor?: string;
+  readonly limit: number;
+}
+
 export interface InspectRowGroupMessage extends MessageBase {
   readonly kind: "inspectRowGroup";
   readonly requestId: string;
@@ -66,6 +105,8 @@ export type ControllerMessage =
   | InspectMetadataMessage
   | InspectRowGroupMessage
   | InspectPageMessage
+  | InspectRowsMessage
+  | InspectFilterMessage
   | SupplyRangeMessage
   | CancelMessage
   | DisposeMessage;
@@ -89,7 +130,7 @@ export interface RangeNeededMessage extends MessageBase {
 export interface ResultMessage extends MessageBase {
   readonly kind: "result";
   readonly requestId: string;
-  readonly operation: "metadata" | "rowGroup" | "page";
+  readonly operation: "metadata" | "rowGroup" | "page" | "rows" | "filter";
   readonly json: string;
 }
 
@@ -141,6 +182,116 @@ function integerField(
     );
   }
   return candidate;
+}
+
+function uint32Field(
+  value: Record<string, unknown>,
+  field: string,
+): number {
+  const candidate = integerField(value, field);
+  if (candidate > 0xffff_ffff) {
+    throw new InspectorError(
+      "INVALID_MESSAGE",
+      `${field} must fit an unsigned 32-bit integer`,
+    );
+  }
+  return candidate;
+}
+
+function stringValue(
+  value: Record<string, unknown>,
+  field: string,
+): string {
+  const candidate = value[field];
+  if (typeof candidate !== "string") {
+    throw new InspectorError(
+      "INVALID_MESSAGE",
+      `${field} must be a string`,
+    );
+  }
+  return candidate;
+}
+
+function columnsField(
+  value: Record<string, unknown>,
+  field: string,
+): readonly number[] {
+  const candidate = value[field];
+  if (
+    !Array.isArray(candidate) ||
+    candidate.length === 0 ||
+    candidate.length > MAX_PROJECTION_COLUMNS
+  ) {
+    throw new InspectorError(
+      "INVALID_MESSAGE",
+      `${field} must contain 1..${String(MAX_PROJECTION_COLUMNS)} columns`,
+    );
+  }
+  const columns = candidate.map((column, index) => {
+    if (
+      typeof column !== "number" ||
+      !Number.isSafeInteger(column) ||
+      column < 0 ||
+      column > 0xffff_ffff
+    ) {
+      throw new InspectorError(
+        "INVALID_MESSAGE",
+        `${field}[${String(index)}] must be an unsigned 32-bit integer`,
+      );
+    }
+    return column;
+  });
+  if (new Set(columns).size !== columns.length) {
+    throw new InspectorError(
+      "INVALID_MESSAGE",
+      `${field} must contain unique columns`,
+    );
+  }
+  return columns;
+}
+
+const FILTER_OPERATORS = new Set<FilterOperator>([
+  "eq",
+  "ne",
+  "lt",
+  "le",
+  "gt",
+  "ge",
+  "isNull",
+  "isNotNull",
+  "contains",
+]);
+
+function filterOperatorField(
+  value: Record<string, unknown>,
+  field: string,
+): FilterOperator {
+  const candidate = value[field];
+  if (
+    typeof candidate !== "string" ||
+    !FILTER_OPERATORS.has(candidate as FilterOperator)
+  ) {
+    throw new InspectorError(
+      "INVALID_MESSAGE",
+      `${field} is not a supported filter operator`,
+    );
+  }
+  return candidate as FilterOperator;
+}
+
+function boundedRowCount(
+  value: Record<string, unknown>,
+  field: string,
+  allowDefault = false,
+): number {
+  const count = integerField(value, field);
+  if ((!allowDefault && count === 0) || count > MAX_OPERATION_ROWS) {
+    throw new InspectorError(
+      "INVALID_MESSAGE",
+      `${field} must be ${allowDefault ? "0.." : "1.."}${String(MAX_OPERATION_ROWS)}`,
+    );
+  }
+  return count;
 }
 
 function versionField(value: unknown): ProtocolVersion {
@@ -195,17 +346,83 @@ export function decodeControllerMessage(value: unknown): ControllerMessage {
       return {
         kind,
         requestId: stringField(value, "requestId"),
-        rowGroup: integerField(value, "rowGroup"),
-        column: integerField(value, "column"),
+        rowGroup: uint32Field(value, "rowGroup"),
+        column: uint32Field(value, "column"),
         rowOffset,
-        rowCount: integerField(value, "rowCount"),
+        rowCount: boundedRowCount(value, "rowCount"),
+      };
+    }
+    case "inspectRows": {
+      const rowOffset = stringField(value, "rowOffset");
+      parseUnsignedDecimal(rowOffset, "rowOffset");
+      return {
+        kind,
+        requestId: stringField(value, "requestId"),
+        rowGroup: uint32Field(value, "rowGroup"),
+        columns: columnsField(value, "columns"),
+        rowOffset,
+        rowCount: boundedRowCount(value, "rowCount"),
+      };
+    }
+    case "inspectFilter": {
+      const predicateValue = value["predicate"];
+      if (!isRecord(predicateValue)) {
+        throw new InspectorError(
+          "INVALID_MESSAGE",
+          "predicate must be an object",
+        );
+      }
+      const operator = filterOperatorField(predicateValue, "operator");
+      const literal = stringValue(predicateValue, "literal");
+      if (
+        new TextEncoder().encode(literal).byteLength >
+        MAX_FILTER_LITERAL_BYTES
+      ) {
+        throw new InspectorError(
+          "INVALID_MESSAGE",
+          `predicate literal exceeds ${String(MAX_FILTER_LITERAL_BYTES)} UTF-8 bytes`,
+        );
+      }
+      if (
+        (operator === "isNull" || operator === "isNotNull") &&
+        literal.length !== 0
+      ) {
+        throw new InspectorError(
+          "INVALID_MESSAGE",
+          `${operator} requires an empty literal`,
+        );
+      }
+      const cursor = value["cursor"];
+      if (
+        cursor !== undefined &&
+        (typeof cursor !== "string" ||
+          cursor.length === 0 ||
+          new TextEncoder().encode(cursor).byteLength >
+            MAX_FILTER_CURSOR_BYTES)
+      ) {
+        throw new InspectorError(
+          "INVALID_MESSAGE",
+          "cursor must be a non-empty string when present",
+        );
+      }
+      return {
+        kind,
+        requestId: stringField(value, "requestId"),
+        predicate: {
+          column: uint32Field(predicateValue, "column"),
+          operator,
+          literal,
+        },
+        columns: columnsField(value, "columns"),
+        ...(cursor === undefined ? {} : { cursor }),
+        limit: boundedRowCount(value, "limit", true),
       };
     }
     case "inspectRowGroup":
       return {
         kind,
         requestId: stringField(value, "requestId"),
-        rowGroup: integerField(value, "rowGroup"),
+        rowGroup: uint32Field(value, "rowGroup"),
       };
     case "supplyRange": {
       const offset = stringField(value, "offset");
@@ -273,7 +490,9 @@ export function decodeWorkerMessage(value: unknown): WorkerMessage {
       if (
         operation !== "metadata" &&
         operation !== "rowGroup" &&
-        operation !== "page"
+        operation !== "page" &&
+        operation !== "rows" &&
+        operation !== "filter"
       ) {
         throw new InspectorError(
           "INVALID_MESSAGE",

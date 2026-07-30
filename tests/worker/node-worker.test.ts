@@ -130,6 +130,46 @@ describe("Node parser worker integration", () => {
         rangeRequests: 5,
         transferredBytes: 672n,
       });
+      await expect(
+        supervisor.inspectRows(source, {
+          rowGroup: 0,
+          columns: [0, 1],
+          rowOffset: 2n,
+          rowCount: 3,
+        }),
+      ).resolves.toMatchObject({
+        operation: "rows-v1",
+        rowGroup: 0,
+        offset: "2",
+        count: 3,
+        columns: [{ id: 0 }, { id: 1 }],
+        rows: [
+          { localRow: "2", absoluteRow: "2" },
+          { localRow: "3", absoluteRow: "3" },
+          { localRow: "4", absoluteRow: "4" },
+        ],
+      });
+      await expect(
+        supervisor.inspectFilter(source, {
+          predicate: {
+            column: 0,
+            operator: "ge",
+            literal: "8",
+          },
+          columns: [0, 1],
+          limit: 100,
+        }),
+      ).resolves.toMatchObject({
+        operation: "filter-v1",
+        matched: 2,
+        completed: true,
+        truncated: false,
+        cursor: null,
+        rows: [
+          { localRow: "8", absoluteRow: "8" },
+          { localRow: "9", absoluteRow: "9" },
+        ],
+      });
 
       await supervisor.restart();
       await expect(supervisor.inspectMetadata(source)).resolves.toEqual(

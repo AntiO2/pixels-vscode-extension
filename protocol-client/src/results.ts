@@ -1,4 +1,9 @@
-import { CORE_ABI_VERSION } from "./constants.js";
+import {
+  CORE_ABI_VERSION,
+  MAX_FILTER_CURSOR_BYTES,
+  MAX_OPERATION_ROWS,
+  MAX_PROJECTION_COLUMNS,
+} from "./constants.js";
 import { InspectorError } from "./errors.js";
 
 const SIGNED_DECIMAL = /^(?:0|-?[1-9][0-9]*)$/u;
@@ -145,6 +150,46 @@ export interface PageResult {
   readonly offset: number;
   readonly count: number;
   readonly values: readonly PageValue[];
+}
+
+export interface ProjectedColumn {
+  readonly id: number;
+  readonly name: string;
+  readonly kind: number;
+}
+
+export interface ProjectedRow {
+  readonly rowGroup: number;
+  readonly localRow: string;
+  readonly absoluteRow: string;
+  readonly values: readonly PageValue[];
+}
+
+export interface RowsResult {
+  readonly operation: "rows-v1";
+  readonly rowGroup: number;
+  readonly offset: string;
+  readonly count: number;
+  readonly columns: readonly ProjectedColumn[];
+  readonly rows: readonly ProjectedRow[];
+}
+
+export interface FilterProgress {
+  readonly scannedRowGroups: number;
+  readonly prunedRowGroups: number;
+  readonly scannedRows: string;
+  readonly prunedRows: string;
+}
+
+export interface FilterResult {
+  readonly operation: "filter-v1";
+  readonly columns: readonly ProjectedColumn[];
+  readonly rows: readonly ProjectedRow[];
+  readonly progress: FilterProgress;
+  readonly matched: number;
+  readonly completed: boolean;
+  readonly truncated: boolean;
+  readonly cursor: string | null;
 }
 
 function fail(message: string): never {
@@ -662,6 +707,187 @@ export function decodePageResult(value: unknown): PageResult {
   return result;
 }
 
+function decodeProjectedColumns(
+  value: unknown,
+  path: string,
+): readonly ProjectedColumn[] {
+  const decoded = array(value, path).map((item, index) => {
+    const itemPath = `${path}[${String(index)}]`;
+    const column = record(item, itemPath);
+    return {
+      id: integer(column["id"], `${itemPath}.id`),
+      name: string(column["name"], `${itemPath}.name`),
+      kind: integer(column["kind"], `${itemPath}.kind`),
+    };
+  });
+  if (
+    decoded.length === 0 ||
+    decoded.length > MAX_PROJECTION_COLUMNS ||
+    new Set(decoded.map((column) => column.id)).size !== decoded.length ||
+    decoded.some((column) => column.id > 0xffff_ffff || column.kind >= 20)
+  ) {
+    fail(`${path} must contain unique projected columns`);
+  }
+  return decoded;
+}
+
+function decodeProjectedRows(
+  value: unknown,
+  path: string,
+  columnCount: number,
+): readonly ProjectedRow[] {
+  return array(value, path).map((item, index) => {
+    const itemPath = `${path}[${String(index)}]`;
+    const row = record(item, itemPath);
+    const values = array(row["values"], `${itemPath}.values`).map(
+      (candidate, valueIndex) =>
+        decodePageValue(
+          candidate,
+          `${itemPath}.values[${String(valueIndex)}]`,
+          0,
+        ),
+    );
+    if (values.length !== columnCount) {
+      fail(`${itemPath}.values does not match projected columns`);
+    }
+    return {
+      rowGroup: integer(row["rowGroup"], `${itemPath}.rowGroup`),
+      localRow: decimal(row["localRow"], `${itemPath}.localRow`, true),
+      absoluteRow: decimal(
+        row["absoluteRow"],
+        `${itemPath}.absoluteRow`,
+        true,
+      ),
+      values,
+    };
+  });
+}
+
+export function decodeRowsResult(value: unknown): RowsResult {
+  const source = record(value, "rows");
+  if (source["operation"] !== "rows-v1") {
+    fail("rows.operation must be rows-v1");
+  }
+  const columns = decodeProjectedColumns(source["columns"], "rows.columns");
+  const rows = decodeProjectedRows(
+    source["rows"],
+    "rows.rows",
+    columns.length,
+  );
+  const result: RowsResult = {
+    operation: "rows-v1",
+    rowGroup: integer(source["rowGroup"], "rows.rowGroup"),
+    offset: decimal(source["offset"], "rows.offset", true),
+    count: integer(source["count"], "rows.count"),
+    columns,
+    rows,
+  };
+  if (
+    result.count !== rows.length ||
+    result.count === 0 ||
+    result.count > MAX_OPERATION_ROWS
+  ) {
+    fail("rows count is outside bounds or does not match row values");
+  }
+  if (
+    rows.some((row, index) => {
+      const localRow = BigInt(result.offset) + BigInt(index);
+      const absoluteRow =
+        BigInt(rows[0]?.absoluteRow ?? "0") + BigInt(index);
+      return (
+        row.rowGroup !== result.rowGroup ||
+        BigInt(row.localRow) !== localRow ||
+        BigInt(row.absoluteRow) !== absoluteRow
+      );
+    })
+  ) {
+    fail("rows identities are inconsistent with the requested page");
+  }
+  return result;
+}
+
+export function decodeFilterResult(value: unknown): FilterResult {
+  const source = record(value, "filter");
+  if (source["operation"] !== "filter-v1") {
+    fail("filter.operation must be filter-v1");
+  }
+  const columns = decodeProjectedColumns(
+    source["columns"],
+    "filter.columns",
+  );
+  const rows = decodeProjectedRows(
+    source["rows"],
+    "filter.rows",
+    columns.length,
+  );
+  const progressValue = record(source["progress"], "filter.progress");
+  const cursorValue = source["cursor"];
+  if (
+    cursorValue !== null &&
+    (typeof cursorValue !== "string" ||
+      cursorValue.length === 0 ||
+      new TextEncoder().encode(cursorValue).byteLength >
+        MAX_FILTER_CURSOR_BYTES)
+  ) {
+    fail("filter.cursor must be null or a non-empty string");
+  }
+  const result: FilterResult = {
+    operation: "filter-v1",
+    columns,
+    rows,
+    progress: {
+      scannedRowGroups: integer(
+        progressValue["scannedRowGroups"],
+        "filter.progress.scannedRowGroups",
+      ),
+      prunedRowGroups: integer(
+        progressValue["prunedRowGroups"],
+        "filter.progress.prunedRowGroups",
+      ),
+      scannedRows: decimal(
+        progressValue["scannedRows"],
+        "filter.progress.scannedRows",
+        true,
+      ),
+      prunedRows: decimal(
+        progressValue["prunedRows"],
+        "filter.progress.prunedRows",
+        true,
+      ),
+    },
+    matched: integer(source["matched"], "filter.matched"),
+    completed: boolean(source["completed"], "filter.completed"),
+    truncated: boolean(source["truncated"], "filter.truncated"),
+    cursor: cursorValue,
+  };
+  if (
+    result.matched !== rows.length ||
+    result.matched > MAX_OPERATION_ROWS
+  ) {
+    fail("filter matched count is outside bounds or inconsistent");
+  }
+  if (
+    rows.some(
+      (row, index) =>
+        index > 0 &&
+        BigInt(row.absoluteRow) <=
+          BigInt(rows[index - 1]?.absoluteRow ?? "0"),
+    )
+  ) {
+    fail("filter rows must have strictly increasing identities");
+  }
+  if (result.truncated === result.completed) {
+    fail("filter completed and truncated states are inconsistent");
+  }
+  if (result.completed && result.cursor !== null) {
+    fail("completed filter result cannot include a cursor");
+  }
+  if (!result.completed && result.cursor === null) {
+    fail("incomplete filter result must include a cursor");
+  }
+  return result;
+}
+
 export function decodeMetadataResultJson(json: string): MetadataResult {
   return decodeMetadataResult(parseJson(json, "metadata"));
 }
@@ -672,4 +898,12 @@ export function decodeRowGroupResultJson(json: string): RowGroupResult {
 
 export function decodePageResultJson(json: string): PageResult {
   return decodePageResult(parseJson(json, "page"));
+}
+
+export function decodeRowsResultJson(json: string): RowsResult {
+  return decodeRowsResult(parseJson(json, "rows"));
+}
+
+export function decodeFilterResultJson(json: string): FilterResult {
+  return decodeFilterResult(parseJson(json, "filter"));
 }

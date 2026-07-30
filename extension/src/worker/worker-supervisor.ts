@@ -3,9 +3,11 @@ import {
   MAX_RANGE_BYTES,
   PROTOCOL_VERSION,
   InspectorError,
+  decodeFilterResultJson,
   decodeMetadataResultJson,
   decodePageResultJson,
   decodeRowGroupResultJson,
+  decodeRowsResultJson,
   decodeWorkerMessage,
   parseUnsignedDecimal,
   toInspectorError,
@@ -13,9 +15,12 @@ import {
 import type {
   CoreCapabilities,
   CoreManifest,
+  FilterOperator,
+  FilterResult,
   MetadataResult,
   PageResult,
   RowGroupResult,
+  RowsResult,
   ControllerMessage,
   ErrorMessage,
   RangeNeededMessage,
@@ -141,6 +146,62 @@ export class WorkerSupervisor {
           kind: "inspectRowGroup",
           requestId,
           rowGroup,
+        }),
+      ),
+    );
+  }
+
+  public async inspectRows(
+    source: RangeSource,
+    options: {
+      readonly rowGroup: number;
+      readonly columns: readonly number[];
+      readonly rowOffset: bigint;
+      readonly rowCount: number;
+    },
+  ): Promise<RowsResult> {
+    await this.initialize();
+    return decodeRowsResultJson(
+      await this.startOperation(
+        source,
+        "rows",
+        (requestId) => ({
+          kind: "inspectRows",
+          requestId,
+          rowGroup: options.rowGroup,
+          columns: options.columns,
+          rowOffset: options.rowOffset.toString(),
+          rowCount: options.rowCount,
+        }),
+      ),
+    );
+  }
+
+  public async inspectFilter(
+    source: RangeSource,
+    options: {
+      readonly predicate: {
+        readonly column: number;
+        readonly operator: FilterOperator;
+        readonly literal: string;
+      };
+      readonly columns: readonly number[];
+      readonly cursor?: string;
+      readonly limit: number;
+    },
+  ): Promise<FilterResult> {
+    await this.initialize();
+    return decodeFilterResultJson(
+      await this.startOperation(
+        source,
+        "filter",
+        (requestId) => ({
+          kind: "inspectFilter",
+          requestId,
+          predicate: options.predicate,
+          columns: options.columns,
+          ...(options.cursor === undefined ? {} : { cursor: options.cursor }),
+          limit: options.limit,
         }),
       ),
     );

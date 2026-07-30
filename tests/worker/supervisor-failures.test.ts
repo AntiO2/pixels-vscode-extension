@@ -23,7 +23,7 @@ type FailureMode =
 
 const manifest: CoreManifest = {
   schemaVersion: 1,
-  abiVersion: 2,
+  abiVersion: 3,
   coreCommit: "7".repeat(40),
   toolchain: {
     emscripten: "6.0.5",
@@ -38,15 +38,47 @@ const manifest: CoreManifest = {
   },
 };
 
+const typeNames = [
+  "BOOLEAN",
+  "BYTE",
+  "SHORT",
+  "INT",
+  "LONG",
+  "FLOAT",
+  "DOUBLE",
+  "STRING",
+  "BINARY",
+  "TIMESTAMP",
+  "ARRAY",
+  "MAP",
+  "STRUCT",
+  "VARBINARY",
+  "DECIMAL",
+  "DATE",
+  "VARCHAR",
+  "CHAR",
+  "TIME",
+  "VECTOR",
+] as const;
+
 const capabilities = decodeCoreCapabilities({
-  abi: 2,
+  abi: 3,
   page: "generic-v1",
+  rows: "rows-v1",
+  filter: "filter-v1",
   rowGroup: "layout-v1",
-  types: Array.from({ length: 20 }, (_value, kind) => ({
+  maxRows: 500,
+  defaultRows: 100,
+  types: typeNames.map((name, kind) => ({
     kind,
-    name: `TYPE_${String(kind)}`,
+    name,
   })),
-  encodings: ["NONE"],
+  encodings: ["NONE", "RUNLENGTH", "DICTIONARY"],
+  compression: {
+    metadata: ["NONE", "ZLIB", "SNAPPY", "LZO", "LZ4", "ZSTD"],
+    payload: "inactive",
+    reason: "postscript-v1-unused",
+  },
   nested: "portable-v1",
 });
 
@@ -68,7 +100,7 @@ class FakeTransport implements WorkerTransport {
           kind: "ready",
           version: PROTOCOL_VERSION,
           generation: message.generation,
-          abi: this.mode === "abiMismatch" ? 1 : 2,
+          abi: this.mode === "abiMismatch" ? 1 : 3,
           coreDigest: "a".repeat(64),
           capabilities,
         });
@@ -162,6 +194,28 @@ function createSupervisor(
 }
 
 describe("worker supervisor failure recovery", () => {
+  it("rejects codecs that ABI 3 does not claim to decode", () => {
+    expect(() =>
+      decodeCoreCapabilities({
+        abi: 3,
+        page: "generic-v1",
+        rows: "rows-v1",
+        filter: "filter-v1",
+        rowGroup: "layout-v1",
+        maxRows: 500,
+        defaultRows: 100,
+        types: typeNames.map((name, kind) => ({ kind, name })),
+        encodings: ["NONE", "RUNLENGTH", "DICTIONARY", "ZSTD"],
+        compression: {
+          metadata: ["NONE", "ZLIB", "SNAPPY", "LZO", "LZ4", "ZSTD"],
+          payload: "inactive",
+          reason: "postscript-v1-unused",
+        },
+        nested: "portable-v1",
+      }),
+    ).toThrow("capabilities");
+  });
+
   it("rejects an ABI mismatch during the handshake", async () => {
     const supervisor = createSupervisor(
       new FakeFactory(["abiMismatch"]),
