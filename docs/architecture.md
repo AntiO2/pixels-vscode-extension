@@ -33,9 +33,11 @@ SHA-256 before instantiation. Unsigned 64-bit values remain `bigint` internally
 and cross the protocol as canonical decimal strings.
 
 The Core owns range planning, file-format validation, footer/schema parsing,
-and decoding. Its C ABI is a narrow state machine: begin an operation, request a
-bounded range, accept the exact range, and return copied JSON or a typed error.
-It has no filesystem, network, Java, Asyncify, or JSPI dependency.
+row-group layout, and decoding. Its C ABI is a narrow state machine: begin
+metadata, row-group, or page inspection; request a bounded range; accept the
+exact range; and return copied JSON or a typed error. The protocol client
+validates those JSON results once before the extension or webview can consume
+them. Core has no filesystem, network, Java, Asyncify, or JSPI dependency.
 
 ## Host variants
 
@@ -47,6 +49,15 @@ can preserve range behavior.
 
 Desktop, Remote, and virtual workspace support are architectural requirements.
 Direct S3, HDFS, HTTP, and object-store providers are intentionally deferred.
+
+## Custom editor
+
+The extension host owns the read-only custom document, source lifetime, parser
+worker, cancellation, and refresh. The webview receives only validated,
+structured-clone-safe models and renders Overview, Schema, Row Groups, Data
+Preview, and Physical Layout. File content never becomes HTML, a command, a
+script URL, or a WASM URL; all content is inserted through DOM text nodes under
+a restrictive content-security policy.
 
 ## Failure model
 

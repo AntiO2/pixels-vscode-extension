@@ -18,6 +18,9 @@
     },
     {
       "path": "../extension"
+    },
+    {
+      "path": "../webview"
     }
   ],
   "include": [

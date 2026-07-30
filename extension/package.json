@@ -1,28 +1,9 @@
 {
-  "name": "pixels-pxl-inspector",
-  "displayName": "Pixels PXL Inspector",
-  "description": "Inspect Pixels PXL files with the portable Pixels Core.",
+  "name": "@pixels-inspector/extension",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "engines": {
-    "vscode": "^1.125.0"
-  },
-  "main": "../dist/extension/node.cjs",
-  "browser": "../dist/extension/browser.js",
-  "extensionKind": [
-    "workspace"
-  ],
-  "capabilities": {
-    "virtualWorkspaces": {
-      "supported": true
-    },
-    "untrustedWorkspaces": {
-      "supported": true
-    }
-  },
-  "activationEvents": [],
-  "contributes": {},
+  "exports": "./src/index.ts",
   "dependencies": {
     "@pixels-inspector/protocol-client": "0.1.0"
   }

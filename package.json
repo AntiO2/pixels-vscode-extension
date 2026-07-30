@@ -1,18 +1,55 @@
 {
   "name": "pixels-vscode-extension",
+  "displayName": "Pixels PXL Inspector",
+  "description": "Inspect Pixels PXL files with the portable Pixels Core.",
   "version": "0.1.0",
+  "publisher": "AntiO2",
+  "license": "AGPL-3.0-or-later",
   "private": true,
   "type": "module",
+  "main": "./dist/extension/node.cjs",
+  "browser": "./dist/extension/browser.js",
+  "extensionKind": [
+    "workspace"
+  ],
+  "capabilities": {
+    "virtualWorkspaces": {
+      "supported": true
+    },
+    "untrustedWorkspaces": {
+      "supported": true
+    }
+  },
+  "activationEvents": [
+    "onCustomEditor:pixels.pxlInspector"
+  ],
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "pixels.pxlInspector",
+        "displayName": "Pixels PXL Inspector",
+        "selector": [
+          {
+            "filenamePattern": "*.pxl"
+          }
+        ],
+        "priority": "default"
+      }
+    ]
+  },
   "workspaces": [
     "extension",
     "protocol-client",
     "worker"
   ],
   "engines": {
-    "node": ">=24.0.0"
+    "node": ">=24.0.0",
+    "vscode": "^1.125.0"
   },
   "scripts": {
     "build": "node scripts/build.mjs",
+    "package:vsix": "npm run build && vsce package --no-dependencies --allow-missing-repository",
+    "package:target": "node scripts/package-target.mjs",
     "build:core": "node scripts/build-core-wasm.mjs",
     "stage:core": "node scripts/stage-core-wasm.mjs",
     "verify:core": "node scripts/verify-core.mjs",
@@ -24,6 +61,7 @@
     "check": "npm run lint && npm run typecheck && npm test && npm run build && npm run verify:core && npm run verify:package"
   },
   "devDependencies": {
+    "@vscode/vsce": "3.9.2",
     "@eslint/js": "10.0.1",
     "@playwright/test": "1.62.0",
     "@types/node": "24.13.3",

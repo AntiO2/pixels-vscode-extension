@@ -11,6 +11,9 @@
       "path": "./extension"
     },
     {
+      "path": "./webview"
+    },
+    {
       "path": "./tests"
     }
   ]

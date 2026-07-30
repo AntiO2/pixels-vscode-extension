@@ -1,0 +1,18 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "rootDir": "src",
+    "outDir": "../build/types/webview",
+    "tsBuildInfoFile": "../build/types/webview.tsbuildinfo",
+    "types": []
+  },
+  "references": [
+    {
+      "path": "../protocol-client"
+    }
+  ],
+  "include": [
+    "src/**/*.ts"
+  ]
+}

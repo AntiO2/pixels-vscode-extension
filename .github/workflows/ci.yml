@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:browser
+
+  package:
+    needs: validate
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - darwin-arm64
+          - darwin-x64
+          - linux-arm64
+          - linux-x64
+          - win32-arm64
+          - win32-x64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm run verify:core
+      - name: Record shared WASM digest
+        run: sha256sum resources/core/pixels-inspector-wasm.wasm
+      - run: npm run package:target -- ${{ matrix.target }}
+      - name: Verify packaged WASM identity
+        run: |
+          expected="$(sha256sum resources/core/pixels-inspector-wasm.wasm | cut -d' ' -f1)"
+          actual="$(unzip -p out/vsix/pixels-pxl-inspector-${{ matrix.target }}-0.1.0.vsix extension/resources/core/pixels-inspector-wasm.wasm | sha256sum | cut -d' ' -f1)"
+          test "$expected" = "$actual"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pixels-pxl-inspector-${{ matrix.target }}
+          path: out/vsix/*.vsix
+          if-no-files-found: error
