@@ -32,6 +32,15 @@ const fixturePath = path.join(
   "data",
   "example.pxl",
 );
+const tpchLineitemPath = path.join(
+  root,
+  "third_party",
+  "pixels",
+  "cpp",
+  "tests",
+  "data",
+  "tpch-lineitem.pxl",
+);
 
 beforeAll(async () => {
   await fs.access(workerUrl);
@@ -56,6 +65,45 @@ async function createSupervisor(
 }
 
 describe("Node parser worker integration", () => {
+  it("reads the representative 16-column TPC-H lineitem path", async () => {
+    const source = await NodeFileRangeSource.open(tpchLineitemPath);
+    const supervisor = await createSupervisor();
+    try {
+      const metadata = await supervisor.inspectMetadata(source);
+      expect(metadata.schema).toHaveLength(16);
+      expect(metadata.schema.map((type) => type.name)).toEqual([
+        "l_orderkey", "l_partkey", "l_suppkey", "l_linenumber",
+        "l_quantity", "l_extendedprice", "l_discount", "l_tax",
+        "l_returnflag", "l_linestatus", "l_shipdate", "l_commitdate",
+        "l_receiptdate", "l_shipinstruct", "l_shipmode", "l_comment",
+      ]);
+      const layout = await supervisor.inspectRowGroup(source, 0);
+      expect(layout.rowGroup).toBe(0);
+      expect(layout.columns).toHaveLength(16);
+      await expect(
+        supervisor.inspectPage(source, {
+          rowGroup: 0,
+          column: 0,
+          rowOffset: 0n,
+          rowCount: 2,
+        }),
+      ).resolves.toMatchObject({ values: ["11", "12"] });
+      await expect(
+        supervisor.inspectPage(source, {
+          rowGroup: 0,
+          column: 15,
+          rowOffset: 0n,
+          rowCount: 2,
+        }),
+      ).resolves.toMatchObject({
+        values: ["first line", "second line"],
+      });
+    } finally {
+      await supervisor.dispose();
+      await source.close();
+    }
+  });
+
   it("drives exact ranges and survives worker recreation", async () => {
     const source = await NodeFileRangeSource.open(fixturePath);
     const supervisor = await createSupervisor();
