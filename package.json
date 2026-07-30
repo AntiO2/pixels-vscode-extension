@@ -24,6 +24,53 @@
     "onCustomEditor:pixels.pxlInspector"
   ],
   "contributes": {
+    "configuration": {
+      "title": "Pixels Inspector",
+      "properties": {
+        "pixels.inspector.defaultPageSize": {
+          "type": "integer",
+          "enum": [
+            25,
+            50,
+            100,
+            200,
+            500
+          ],
+          "default": 100,
+          "scope": "resource",
+          "description": "Default number of rows in Data and Query result pages. Requests are always capped at 500 rows."
+        },
+        "pixels.inspector.defaultDataOrientation": {
+          "type": "string",
+          "enum": [
+            "rows",
+            "column"
+          ],
+          "default": "rows",
+          "scope": "resource",
+          "description": "Default Data workspace orientation for newly opened PXL inspectors."
+        },
+        "pixels.inspector.timestampDisplay": {
+          "type": "string",
+          "enum": [
+            "utc",
+            "raw",
+            "local"
+          ],
+          "default": "utc",
+          "scope": "resource",
+          "description": "Display mode for timestamp values. Clipboard output preserves the exact stored microseconds."
+        },
+        "pixels.inspector.maxVirtualFileSizeMiB": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 256,
+          "default": 64,
+          "scope": "resource",
+          "markdownDescription": "Maximum size in MiB for immutable in-memory snapshots of virtual-workspace resources. Larger values increase extension-host memory pressure. Direct local files remain range-read and this setting never exceeds the 256 MiB safety ceiling."
+        }
+      }
+    },
     "customEditors": [
       {
         "viewType": "pixels.pxlInspector",
@@ -61,15 +108,23 @@
     "check": "npm run lint && npm run typecheck && npm test && npm run build && npm run verify:core && npm run verify:package"
   },
   "devDependencies": {
-    "@vscode/vsce": "3.9.2",
     "@eslint/js": "10.0.1",
     "@playwright/test": "1.62.0",
     "@types/node": "24.13.3",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
     "@types/vscode": "1.125.0",
+    "@vscode/vsce": "3.9.2",
     "esbuild": "0.28.1",
     "eslint": "10.8.0",
     "typescript": "6.0.3",
     "typescript-eslint": "8.65.0",
     "vitest": "4.1.10"
+  },
+  "dependencies": {
+    "@tanstack/react-table": "8.21.3",
+    "@vscode/codicons": "0.0.46-24",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
   }
 }

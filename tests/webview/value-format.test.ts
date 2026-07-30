@@ -4,7 +4,10 @@ import type {
 import { describe, expect, it } from "vitest";
 
 import {
+  compressionName,
   copyPageValues,
+  formatBytes,
+  formatTimestamp,
   formatPageValue,
 } from "../../webview/src/value-format.js";
 
@@ -66,5 +69,32 @@ describe("20-kind exact value rendering", () => {
   it("uses the same exact representation for clipboard output", () => {
     expect(copyPageValues([null, "-9223372036854775808", ["1", "2"]]))
       .toBe("NULL\n-9223372036854775808\n[\"1\",\"2\"]");
+  });
+
+  it("formats exact timestamp precision without changing raw copy truth", () => {
+    expect(formatTimestamp("0", 0, "utc"))
+      .toBe("1970-01-01T00:00:00Z");
+    expect(formatTimestamp("1234567", 6, "utc"))
+      .toBe("1970-01-01T00:00:01.234567Z");
+    expect(formatTimestamp("-1", 6, "utc"))
+      .toBe("1969-12-31T23:59:59.999999Z");
+    expect(formatTimestamp("1234567", 3, "raw")).toBe("1234567");
+    expect(copyPageValues(["1234567"])).toBe("1234567");
+  });
+
+  it("labels every declared compression enum without claiming decoding", () => {
+    expect([0, 1, 2, 3, 4, 5].map(compressionName)).toEqual([
+      "NONE",
+      "ZLIB",
+      "SNAPPY",
+      "LZO",
+      "LZ4",
+      "ZSTD",
+    ]);
+  });
+
+  it("formats byte counts without losing the exact byte string", () => {
+    expect(formatBytes("1024")).toBe("1.00 KiB");
+    expect(formatBytes("9223372036854775807")).toMatch(/TiB$/u);
   });
 });

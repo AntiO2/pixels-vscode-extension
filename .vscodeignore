@@ -8,7 +8,10 @@
 build/**
 docs/**
 extension/**
+out/**
 protocol-client/**
+resources/banner.png
+resources/logo.png
 scripts/**
 tests/**
 third_party/**

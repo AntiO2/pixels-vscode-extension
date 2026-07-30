@@ -5,7 +5,8 @@
     "rootDir": "src",
     "outDir": "../build/types/webview",
     "tsBuildInfoFile": "../build/types/webview.tsbuildinfo",
-    "types": []
+    "types": [],
+    "jsx": "react-jsx"
   },
   "references": [
     {
@@ -13,6 +14,7 @@
     }
   ],
   "include": [
-    "src/**/*.ts"
+    "src/**/*.ts",
+    "src/**/*.tsx"
   ]
 }

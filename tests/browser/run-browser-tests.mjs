@@ -14,6 +14,7 @@ const mimeTypes = new Map([
   [".js", "text/javascript; charset=utf-8"],
   [".json", "application/json; charset=utf-8"],
   [".pxl", "application/octet-stream"],
+  [".ttf", "font/ttf"],
   [".wasm", "application/wasm"],
 ]);
 
@@ -35,6 +36,7 @@ const server = http.createServer(async (request, response) => {
       const html = `<!doctype html>
 <meta charset="utf-8">
 <link rel="stylesheet" href="/dist/webview/styles.css">
+<body class="vscode-dark" style="--vscode-editor-background:#17191d;--vscode-sideBar-background:#1d2025;--vscode-foreground:#d7dae0;--vscode-descriptionForeground:#9ca3af;--vscode-panel-border:#343840;--vscode-focusBorder:#3794ff;--vscode-list-activeSelectionBackground:#264f78;--vscode-list-hoverBackground:#252a31;--vscode-input-background:#20242a;--vscode-input-foreground:#d7dae0">
 <div id="app"></div>
 <script>
 globalThis.webviewMessages = [];
@@ -134,11 +136,20 @@ try {
         revision: `${validation.lineitemSize}:1`,
       },
       capabilities: {
-        abi: 2,
+        abi: 3,
         page: "generic-v1",
+        rows: "rows-v1",
+        filter: "filter-v1",
         rowGroup: "layout-v1",
+        maxRows: 500,
+        defaultRows: 100,
         types,
         encodings: ["NONE", "RUNLENGTH", "DICTIONARY"],
+        compression: {
+          metadata: ["NONE", "ZLIB", "SNAPPY", "LZO", "LZ4", "ZSTD"],
+          payload: "inactive",
+          reason: "postscript-v1-unused",
+        },
         nested: "portable-v1",
       },
       metadata: JSON.parse(validation.lineitemMetadata),
@@ -153,35 +164,122 @@ try {
       revision: 1,
       page: JSON.parse(validation.lineitemPage),
     });
+    emit({
+      kind: "rows",
+      revision: 1,
+      rows: {
+        operation: "rows-v1",
+        rowGroup: 1,
+        offset: "0",
+        count: 2,
+        columns: [
+          { id: 0, name: "l_orderkey", kind: 4 },
+          { id: 15, name: "l_comment", kind: 16 },
+        ],
+        rows: [
+          {
+            rowGroup: 1,
+            localRow: "0",
+            absoluteRow: "2",
+            values: ["3", "third line"],
+          },
+          {
+            rowGroup: 1,
+            localRow: "1",
+            absoluteRow: "3",
+            values: ["4", "fourth line"],
+          },
+        ],
+      },
+    });
+    emit({
+      kind: "filter",
+      revision: 1,
+      filter: {
+        operation: "filter-v1",
+        columns: [
+          { id: 0, name: "l_orderkey", kind: 4 },
+          { id: 15, name: "l_comment", kind: 16 },
+        ],
+        rows: [
+          {
+            rowGroup: 1,
+            localRow: "1",
+            absoluteRow: "3",
+            values: ["4", "fourth line"],
+          },
+        ],
+        progress: {
+          scannedRowGroups: 1,
+          prunedRowGroups: 1,
+          scannedRows: "2",
+          prunedRows: "2",
+        },
+        matched: 1,
+        completed: true,
+        truncated: false,
+        cursor: null,
+      },
+    });
   }, result);
 
-  await webview.getByRole("button", { name: "Schema" }).click();
-  const schemaText = await webview.locator("main").innerText();
+  const analyzeText = await webview.locator("main").innerText();
   if (
-    !schemaText.includes("l_orderkey") ||
-    !schemaText.includes("l_comment")
+    !analyzeText.includes("File storage map") ||
+    !analyzeText.includes("column chunks") ||
+    !analyzeText.includes("pixel segments") ||
+    !analyzeText.includes("inactive in Pixels V1")
   ) {
-    throw new Error("webview Schema view did not render lineitem columns");
+    throw new Error("Analyze workspace did not render the storage hierarchy");
   }
-  await webview.getByRole("button", { name: "Row Groups" }).click();
-  if (!(await webview.locator("main").innerText()).includes("Row group 1 layout")) {
-    throw new Error("webview Row Groups view did not render lineitem layout");
+  const hierarchy = await webview
+    .getByRole("navigation", { name: "Storage hierarchy" })
+    .innerText();
+  if (!hierarchy.includes("File")) {
+    throw new Error("storage breadcrumb is unavailable");
   }
-  await webview.getByRole("button", { name: "Data Preview" }).click();
-  const previewText = await webview.locator("main").innerText();
+  await webview.getByRole("button", { name: "Data" }).click();
+  const dataText = await webview.locator("main").innerText();
   if (
-    !previewText.includes("l_comment · VARCHAR") ||
-    !previewText.includes("fourth line")
+    !dataText.includes("l_orderkey") ||
+    !dataText.includes("l_comment") ||
+    !dataText.includes("fourth line") ||
+    !dataText.includes("Rows per page")
   ) {
-    throw new Error("webview Data Preview did not render lineitem values");
+    throw new Error("Data Rows mode did not render the projected result");
   }
-  await webview.getByRole("button", { name: "Physical Layout" }).click();
-  const layoutText = await webview.locator("main").innerText();
+  await webview.getByRole("button", { name: "Query" }).click();
+  const queryText = await webview.locator("main").innerText();
   if (
-    !layoutText.includes("Schema → Row Group → Chunk → Pixel") ||
-    !layoutText.includes("Pixel 0")
+    !queryText.includes("Typed file filter") ||
+    !queryText.includes("1 matches in this page") ||
+    !queryText.includes("fourth line") ||
+    !queryText.includes("Scan complete")
   ) {
-    throw new Error("webview Physical Layout hierarchy is incomplete");
+    throw new Error("Query mode did not render progress and typed results");
+  }
+  await webview.evaluate(() => {
+    globalThis.document.body.className = "vscode-light";
+    globalThis.document.body.style.setProperty(
+      "--vscode-editor-background",
+      "#ffffff",
+    );
+    globalThis.document.body.style.setProperty(
+      "--vscode-sideBar-background",
+      "#f3f4f6",
+    );
+    globalThis.document.body.style.setProperty(
+      "--vscode-foreground",
+      "#1f2937",
+    );
+  });
+  const lightBackground = await webview
+    .locator("body")
+    .evaluate(
+      (element) => globalThis.getComputedStyle(element).backgroundColor,
+    );
+  if (lightBackground !== "rgb(255, 255, 255)") {
+    throw new Error("runtime Light theme variables did not update the Webview");
   }
   await webview.close();
   process.stdout.write(`${JSON.stringify(result)}\n`);
