@@ -175,7 +175,7 @@ const themeCases = [
     expected: {
       canvas: "rgb(17, 23, 29)",
       surface: "rgb(24, 33, 41)",
-      text: "rgb(215, 218, 224)",
+      text: "rgb(237, 244, 249)",
       selected: "color(srgb 0.120314 0.213804 0.326431)",
       border: "rgb(52, 71, 83)",
       control: "rgb(32, 36, 42)",
@@ -212,7 +212,7 @@ const themeCases = [
     expected: {
       canvas: "rgb(247, 249, 251)",
       surface: "rgb(237, 242, 246)",
-      text: "rgb(31, 41, 55)",
+      text: "rgb(23, 33, 43)",
       selected: "color(srgb 0.76 0.849412 0.933176)",
       border: "rgb(199, 211, 220)",
       control: "rgb(255, 255, 255)",
@@ -268,6 +268,7 @@ themeCases.push({
     ...lightTheme.expected,
     canvas: "rgb(255, 255, 255)",
     surface: "rgb(255, 255, 255)",
+    text: "rgb(31, 41, 55)",
     selected: "rgb(214, 235, 255)",
     border: "rgb(31, 41, 55)",
   },

@@ -98,6 +98,7 @@
   --px-material: rgb(255 255 255 / 92%);
   --px-material-heavy: rgb(234 241 246 / 96%);
   --px-light-edge: #dbe4eb;
+  --px-text: #17212b;
   --px-text-secondary: #526373;
   --px-border: #c7d3dc;
   --px-border-strong: #8ba2b3;
@@ -123,6 +124,7 @@
   --px-material: rgb(32 44 53 / 92%);
   --px-material-heavy: rgb(24 33 41 / 96%);
   --px-light-edge: #2b3b47;
+  --px-text: #edf4f9;
   --px-text-secondary: #a8b7c3;
   --px-border: #344753;
   --px-border-strong: #60798a;
@@ -189,6 +191,7 @@ body,
 }
 
 body {
+  color: var(--px-text);
   background: var(--px-canvas);
 }
 
