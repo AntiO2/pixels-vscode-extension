@@ -6,6 +6,7 @@ export type InspectorErrorCode =
   | "DISPOSED"
   | "INTERNAL"
   | "INVALID_MESSAGE"
+  | "INVALID_CURSOR"
   | "INVALID_RANGE"
   | "PROTOCOL_MISMATCH"
   | "SHORT_READ"

@@ -23,6 +23,66 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser
 
+  core-native:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - cc: gcc
+            cxx: g++
+          - cc: clang
+            cxx: clang++
+    env:
+      CC: ${{ matrix.compiler.cc }}
+      CXX: ${{ matrix.compiler.cxx }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run test:core-native
+
+  scan-node-real:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: mymindstorm/setup-emsdk@v16
+        with:
+          version: 6.0.5
+          actions-cache-folder: emsdk-cache
+      - run: npm ci
+      - run: npm run test:scan-real
+
+  generic-vsix-audit:
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run package:vsix
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pixels-pxl-inspector-generic
+          path: out/vsix/pixels-pxl-inspector-*.vsix
+          if-no-files-found: error
+
   package:
     needs: validate
     runs-on: ubuntu-latest

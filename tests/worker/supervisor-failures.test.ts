@@ -19,11 +19,14 @@ type FailureMode =
   | "abiMismatch"
   | "crashOnInspect"
   | "idle"
+  | "scanProgress"
+  | "scanProgressRegression"
+  | "staleErrorOnInspect"
   | "staleOnInspect";
 
 const manifest: CoreManifest = {
   schemaVersion: 1,
-  abiVersion: 3,
+  abiVersion: 4,
   coreCommit: "7".repeat(40),
   toolchain: {
     emscripten: "6.0.5",
@@ -62,13 +65,20 @@ const typeNames = [
 ] as const;
 
 const capabilities = decodeCoreCapabilities({
-  abi: 3,
+  abi: 4,
   page: "generic-v1",
   rows: "rows-v1",
   filter: "filter-v1",
+  scan: "scan-v2",
   rowGroup: "layout-v1",
   maxRows: 500,
   defaultRows: 100,
+  defaultScanRows: 20,
+  maxScanRows: 500,
+  maxProjectionColumns: 128,
+  maxExpressionNodes: 64,
+  maxOrderKeys: 8,
+  maxOrderedWindowRows: 4096,
   types: typeNames.map((name, kind) => ({
     kind,
     name,
@@ -100,7 +110,7 @@ class FakeTransport implements WorkerTransport {
           kind: "ready",
           version: PROTOCOL_VERSION,
           generation: message.generation,
-          abi: this.mode === "abiMismatch" ? 1 : 3,
+          abi: this.mode === "abiMismatch" ? 1 : 4,
           coreDigest: "a".repeat(64),
           capabilities,
         });
@@ -121,7 +131,87 @@ class FakeTransport implements WorkerTransport {
             json: "{}",
           });
         });
+      } else if (this.mode === "staleErrorOnInspect") {
+        queueMicrotask(() => {
+          this.emitMessage({
+            kind: "error",
+            requestId: "stale-request",
+            code: "CANCELLED",
+            message: "stale cancellation",
+            recoverable: true,
+          });
+        });
       }
+      return;
+    }
+    if (message.kind === "inspectScan") {
+      const progress = {
+        phase: "scanning",
+        rowGroupsTotal: 2,
+        rowGroupsConsidered: 1,
+        scannedRowGroups: 1,
+        prunedRowGroups: 0,
+        currentRowGroup: 1,
+        retainedCandidates: 1,
+        rowsTotal: "10",
+        scannedRows: "5",
+        prunedRows: "0",
+        matchedRows: "1",
+      } as const;
+      queueMicrotask(() => {
+        this.emitMessage({
+          kind: "progress",
+          requestId: message.requestId,
+          operation: "scan",
+          progress,
+        });
+        if (this.mode === "scanProgressRegression") {
+          this.emitMessage({
+            kind: "progress",
+            requestId: message.requestId,
+            operation: "scan",
+            progress: {
+              ...progress,
+              scannedRows: "4",
+            },
+          });
+          return;
+        }
+        this.emitMessage({
+          kind: "result",
+          requestId: message.requestId,
+          operation: "scan",
+          json: JSON.stringify({
+            operation: "scan-v2",
+            columns: [{ id: 0, name: "id", kind: 4 }],
+            rows: [{
+              rowGroup: 0,
+              localRow: "0",
+              absoluteRow: "0",
+              values: ["0"],
+            }],
+            page: {
+              offsetApplied: "0",
+              limit: 20,
+              returned: 1,
+              continuationAvailable: false,
+              hasMoreExact: true,
+              cursor: null,
+            },
+            scan: { ordered: false, completion: "complete" },
+            progress: {
+              rowGroupsTotal: 2,
+              rowGroupsConsidered: 2,
+              scannedRowGroups: 2,
+              prunedRowGroups: 0,
+              rowsTotal: "10",
+              scannedRows: "10",
+              prunedRows: "0",
+              matchedRows: "1",
+            },
+          }),
+        });
+      });
     }
   }
 
@@ -194,16 +284,45 @@ function createSupervisor(
 }
 
 describe("worker supervisor failure recovery", () => {
-  it("rejects codecs that ABI 3 does not claim to decode", () => {
+  it("accepts the bounded filter-only rollback capability", () => {
+    const legacy = decodeCoreCapabilities({
+      abi: 4,
+      page: "generic-v1",
+      rows: "rows-v1",
+      filter: "filter-v1",
+      rowGroup: "layout-v1",
+      maxRows: 500,
+      defaultRows: 100,
+      types: typeNames.map((name, kind) => ({ kind, name })),
+      encodings: ["NONE", "RUNLENGTH", "DICTIONARY"],
+      compression: {
+        metadata: ["NONE", "ZLIB", "SNAPPY", "LZO", "LZ4", "ZSTD"],
+        payload: "inactive",
+        reason: "postscript-v1-unused",
+      },
+      nested: "portable-v1",
+    });
+    expect(legacy.filter).toBe("filter-v1");
+    expect(legacy.scan).toBeUndefined();
+  });
+
+  it("rejects codecs that ABI 4 does not claim to decode", () => {
     expect(() =>
       decodeCoreCapabilities({
-        abi: 3,
+        abi: 4,
         page: "generic-v1",
         rows: "rows-v1",
         filter: "filter-v1",
+        scan: "scan-v2",
         rowGroup: "layout-v1",
         maxRows: 500,
         defaultRows: 100,
+        defaultScanRows: 20,
+        maxScanRows: 500,
+        maxProjectionColumns: 128,
+        maxExpressionNodes: 64,
+        maxOrderKeys: 8,
+        maxOrderedWindowRows: 4096,
         types: typeNames.map((name, kind) => ({ kind, name })),
         encodings: ["NONE", "RUNLENGTH", "DICTIONARY", "ZSTD"],
         compression: {
@@ -275,6 +394,71 @@ describe("worker supervisor failure recovery", () => {
       await expect(
         supervisor.inspectMetadata(source),
       ).rejects.toMatchObject({ code: "DISPOSED" });
+    } finally {
+      await supervisor.dispose();
+      await source.close();
+    }
+  });
+
+  it("rejects stale worker errors without cancelling the current request", async () => {
+    const factory = new FakeFactory(["staleErrorOnInspect", "idle"]);
+    const supervisor = createSupervisor(factory);
+    const source = createSource();
+    try {
+      await expect(
+        supervisor.inspectMetadata(source),
+      ).rejects.toMatchObject({ code: "STALE_RESPONSE" });
+      await vi.waitFor(() => {
+        expect(factory.created).toBe(2);
+      });
+    } finally {
+      await supervisor.dispose();
+      await source.close();
+    }
+  });
+
+  it("forwards current scan progress and resolves the validated result", async () => {
+    const supervisor = createSupervisor(new FakeFactory(["scanProgress"]));
+    const source = createSource();
+    const progress = vi.fn();
+    try {
+      const result = await supervisor.inspectScan(
+        source,
+        {
+          projection: { kind: "all" },
+          orderBy: [],
+          offset: "0",
+          limit: 20,
+        },
+        progress,
+      );
+      expect(progress).toHaveBeenCalledOnce();
+      expect(progress).toHaveBeenCalledWith(
+        expect.objectContaining({ scannedRows: "5" }),
+      );
+      expect(result).toMatchObject({ operation: "scan-v2" });
+    } finally {
+      await supervisor.dispose();
+      await source.close();
+    }
+  });
+
+  it("rejects regressing progress and replaces the worker generation", async () => {
+    const factory = new FakeFactory(["scanProgressRegression", "idle"]);
+    const supervisor = createSupervisor(factory);
+    const source = createSource();
+    try {
+      await expect(
+        supervisor.inspectScan(source, {
+          projection: { kind: "all" },
+          orderBy: [],
+          offset: "0",
+          limit: 20,
+        }),
+      ).rejects.toMatchObject({ code: "INVALID_MESSAGE" });
+      await vi.waitFor(() => {
+        expect(factory.created).toBe(2);
+      });
     } finally {
       await supervisor.dispose();
       await source.close();

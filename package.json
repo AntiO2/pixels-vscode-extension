@@ -1,16 +1,41 @@
 {
   "name": "pixels-vscode-extension",
   "displayName": "Pixels PXL Inspector",
-  "description": "Inspect Pixels PXL files with the portable Pixels Core.",
+  "description": "Analyze, browse, and query Pixels PXL files with a portable WebAssembly Core.",
   "icon": "resources/icon.png",
   "version": "0.1.0",
   "publisher": "AntiO2",
+  "author": {
+    "name": "AntiO2"
+  },
   "license": "AGPL-3.0-or-later",
   "repository": {
     "type": "git",
     "url": "https://github.com/AntiO2/pixels-vscode-extension.git"
   },
-  "private": true,
+  "homepage": "https://github.com/AntiO2/pixels-vscode-extension#readme",
+  "bugs": {
+    "url": "https://github.com/AntiO2/pixels-vscode-extension/issues"
+  },
+  "categories": [
+    "Visualization",
+    "Data Science"
+  ],
+  "keywords": [
+    "pixels",
+    "pxl",
+    "columnar",
+    "file inspector",
+    "data",
+    "schema",
+    "wasm"
+  ],
+  "galleryBanner": {
+    "color": "#DCEBF4",
+    "theme": "dark"
+  },
+  "preview": true,
+  "pricing": "Free",
   "type": "module",
   "main": "./dist/extension/node.cjs",
   "browser": "./dist/extension/browser.js",
@@ -43,7 +68,7 @@
           ],
           "default": 100,
           "scope": "resource",
-          "description": "Default number of rows in Data and Query result pages. Requests are always capped at 500 rows."
+          "description": "Default number of rows in Data pages. Requests are always capped at 500 rows."
         },
         "pixels.inspector.defaultDataOrientation": {
           "type": "string",
@@ -95,20 +120,23 @@
     "worker"
   ],
   "engines": {
-    "node": ">=24.0.0",
     "vscode": "^1.125.0"
   },
   "scripts": {
     "build": "node scripts/build.mjs",
-    "package:vsix": "npm run build && vsce package --no-dependencies --allow-missing-repository",
+    "package:vsix": "npm run build && npm run verify:core && npm run verify:package && node scripts/package-release.mjs && npm run verify:vsix",
     "package:target": "node scripts/package-target.mjs",
+    "generate:example": "node scripts/generate-customer-example.mjs",
     "build:core": "node scripts/build-core-wasm.mjs",
     "stage:core": "node scripts/stage-core-wasm.mjs",
     "verify:core": "node scripts/verify-core.mjs",
     "verify:package": "node scripts/verify-package.mjs",
+    "verify:vsix": "node scripts/verify-vsix.mjs",
     "lint": "eslint .",
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run",
+    "test:core-native": "node scripts/test-core-native.mjs",
+    "test:scan-real": "node scripts/test-scan-node.mjs",
     "test:browser": "npm run build && node tests/browser/run-browser-tests.mjs",
     "check": "npm run lint && npm run typecheck && npm test && npm run build && npm run verify:core && npm run verify:package"
   },
@@ -124,7 +152,8 @@
     "eslint": "10.8.0",
     "typescript": "6.0.3",
     "typescript-eslint": "8.65.0",
-    "vitest": "4.1.10"
+    "vitest": "4.1.10",
+    "yauzl": "3.4.0"
   },
   "dependencies": {
     "@tanstack/react-table": "8.21.3",

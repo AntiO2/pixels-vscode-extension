@@ -11,6 +11,11 @@ import { InspectorError } from "./errors.js";
 import type { CoreManifest } from "./manifest.js";
 import { decodeCoreManifest } from "./manifest.js";
 import { parseUnsignedDecimal } from "./integers.js";
+import type { ScanPlanV2, ScanProgressV2 } from "./scan.js";
+import {
+  decodeScanPlanV2,
+  decodeScanProgressV2,
+} from "./scan.js";
 
 export interface ProtocolVersion {
   readonly major: number;
@@ -78,6 +83,12 @@ export interface InspectFilterMessage extends MessageBase {
   readonly limit: number;
 }
 
+export interface InspectScanMessage extends MessageBase {
+  readonly kind: "inspectScan";
+  readonly requestId: string;
+  readonly plan: ScanPlanV2;
+}
+
 export interface InspectRowGroupMessage extends MessageBase {
   readonly kind: "inspectRowGroup";
   readonly requestId: string;
@@ -107,6 +118,7 @@ export type ControllerMessage =
   | InspectPageMessage
   | InspectRowsMessage
   | InspectFilterMessage
+  | InspectScanMessage
   | SupplyRangeMessage
   | CancelMessage
   | DisposeMessage;
@@ -130,8 +142,21 @@ export interface RangeNeededMessage extends MessageBase {
 export interface ResultMessage extends MessageBase {
   readonly kind: "result";
   readonly requestId: string;
-  readonly operation: "metadata" | "rowGroup" | "page" | "rows" | "filter";
+  readonly operation:
+    | "metadata"
+    | "rowGroup"
+    | "page"
+    | "rows"
+    | "filter"
+    | "scan";
   readonly json: string;
+}
+
+export interface ScanProgressMessage extends MessageBase {
+  readonly kind: "progress";
+  readonly requestId: string;
+  readonly operation: "scan";
+  readonly progress: ScanProgressV2;
 }
 
 export interface ErrorMessage extends MessageBase {
@@ -145,6 +170,7 @@ export interface ErrorMessage extends MessageBase {
 export type WorkerMessage =
   | ReadyMessage
   | RangeNeededMessage
+  | ScanProgressMessage
   | ResultMessage
   | ErrorMessage;
 
@@ -418,6 +444,12 @@ export function decodeControllerMessage(value: unknown): ControllerMessage {
         limit: boundedRowCount(value, "limit", true),
       };
     }
+    case "inspectScan":
+      return {
+        kind,
+        requestId: stringField(value, "requestId"),
+        plan: decodeScanPlanV2(value["plan"]),
+      };
     case "inspectRowGroup":
       return {
         kind,
@@ -492,7 +524,8 @@ export function decodeWorkerMessage(value: unknown): WorkerMessage {
         operation !== "rowGroup" &&
         operation !== "page" &&
         operation !== "rows" &&
-        operation !== "filter"
+        operation !== "filter" &&
+        operation !== "scan"
       ) {
         throw new InspectorError(
           "INVALID_MESSAGE",
@@ -504,6 +537,20 @@ export function decodeWorkerMessage(value: unknown): WorkerMessage {
         requestId: stringField(value, "requestId"),
         operation,
         json: stringField(value, "json"),
+      };
+    }
+    case "progress": {
+      if (value["operation"] !== "scan") {
+        throw new InspectorError(
+          "INVALID_MESSAGE",
+          "progress operation must be scan",
+        );
+      }
+      return {
+        kind,
+        requestId: stringField(value, "requestId"),
+        operation: "scan",
+        progress: decodeScanProgressV2(value["progress"]),
       };
     }
     case "error": {

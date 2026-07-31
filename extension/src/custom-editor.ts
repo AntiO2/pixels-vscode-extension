@@ -2,6 +2,8 @@ import * as vscode from "vscode";
 
 import {
   InspectorError,
+  MAX_PROJECTION_COLUMNS,
+  decodeScanPlanV2,
   parseUnsignedDecimal,
   toInspectorError,
 } from "@pixels-inspector/protocol-client";
@@ -9,10 +11,15 @@ import type {
   CoreManifest,
   FilterOperator,
   MetadataResult,
+  ScanExpressionV2,
+  ScanPlanV2,
 } from "@pixels-inspector/protocol-client";
 
 import type { RangeSource } from "./sources/range-source.js";
+import { ColumnPageCache } from "./data/column-page-cache.js";
+import type { ColumnPageKey } from "./data/column-page-cache.js";
 import type { WorkerFactory } from "./worker/transport.js";
+import { ScanProgressClock } from "./worker/scan-progress-clock.js";
 import { WorkerSupervisor } from "./worker/worker-supervisor.js";
 
 export const INSPECTOR_VIEW_TYPE = "pixels.pxlInspector";
@@ -45,7 +52,7 @@ export interface InspectorRuntime {
   openSource(uri: vscode.Uri, limit?: bigint): Promise<RangeSource>;
 }
 
-class PixelsDocument implements vscode.CustomDocument {
+export class PixelsDocument implements vscode.CustomDocument {
   public constructor(public readonly uri: vscode.Uri) {}
 
   public dispose(): void {
@@ -76,6 +83,10 @@ interface FilterSelection {
   readonly columns: readonly number[];
   readonly cursor?: string;
   readonly limit: number;
+}
+
+interface ScanSelection {
+  readonly plan: ScanPlanV2;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -367,10 +378,111 @@ export function decodeFilterSelection(
   };
 }
 
-class EditorSession {
+const SCAN_SCALAR_KINDS = new Set([
+  0, 1, 2, 3, 4, 5, 6, 7, 9, 14, 15, 16, 17, 18,
+]);
+
+function validateScanExpression(
+  expression: ScanExpressionV2,
+  metadata: MetadataResult,
+  rootColumns: ReadonlySet<number>,
+): void {
+  switch (expression.kind) {
+    case "and":
+    case "or":
+      expression.children.forEach((child) => {
+        validateScanExpression(child, metadata, rootColumns);
+      });
+      return;
+    case "not":
+      validateScanExpression(expression.child, metadata, rootColumns);
+      return;
+    case "predicate": {
+      const type = metadata.schema.find(
+        (candidate) => candidate.id === expression.column,
+      );
+      if (
+        type === undefined ||
+        !rootColumns.has(expression.column) ||
+        !SCAN_SCALAR_KINDS.has(type.kind) ||
+        (expression.operator === "contains" &&
+          type.kind !== 7 &&
+          type.kind !== 16 &&
+          type.kind !== 17) ||
+        (type.kind === 0 &&
+          expression.operator !== "eq" &&
+          expression.operator !== "ne" &&
+          expression.operator !== "isNull" &&
+          expression.operator !== "isNotNull")
+      ) {
+        throw new InspectorError(
+          "INVALID_MESSAGE",
+          "scan predicate is incompatible with the root scalar schema",
+        );
+      }
+    }
+  }
+}
+
+export function decodeScanSelection(
+  value: unknown,
+  metadata: MetadataResult,
+): ScanSelection {
+  if (!isRecord(value)) {
+    throw new InspectorError(
+      "INVALID_MESSAGE",
+      "scan selection must be an object",
+    );
+  }
+  const plan = decodeScanPlanV2(value["plan"]);
+  const rootColumns = new Set(rootColumnIds(metadata));
+  if (
+    plan.projection.kind === "all" &&
+    rootColumns.size > MAX_PROJECTION_COLUMNS
+  ) {
+    throw new InspectorError(
+      "INVALID_MESSAGE",
+      "scan all projection exceeds the root column bound",
+    );
+  }
+  if (
+    plan.projection.kind === "columns" &&
+    plan.projection.columns.some((column) => !rootColumns.has(column))
+  ) {
+    throw new InspectorError(
+      "INVALID_MESSAGE",
+      "scan projection contains a non-root schema column",
+    );
+  }
+  if (plan.predicate !== undefined) {
+    validateScanExpression(plan.predicate, metadata, rootColumns);
+  }
+  if (
+    plan.orderBy.some((key) => {
+      const type = metadata.schema.find(
+        (candidate) => candidate.id === key.column,
+      );
+      return (
+        type === undefined ||
+        !rootColumns.has(key.column) ||
+        !SCAN_SCALAR_KINDS.has(type.kind)
+      );
+    })
+  ) {
+    throw new InspectorError(
+      "INVALID_MESSAGE",
+      "scan order key is incompatible with the root scalar schema",
+    );
+  }
+  return { plan };
+}
+
+export class EditorSession {
   private readonly supervisor: WorkerSupervisor;
+  private readonly columnPageCache = new ColumnPageCache();
   private source: RangeSource | undefined;
   private metadata: MetadataResult | undefined;
+  private metadataGeneration: number | undefined;
   private revision = 0;
   private queue: Promise<void> = Promise.resolve();
   private disposed = false;
@@ -430,7 +542,13 @@ class EditorSession {
     }
     if (value["kind"] === "cancel") {
       this.enqueue((revision) => {
-        this.post({ kind: "empty", revision });
+        this.post({
+          // Cancel is a Query-only webview action. Report it as cancelled even
+          // when it supersedes a scan that is still queued and has not begun;
+          // otherwise the reducer can remain stuck running.
+          kind: "scanCancelled",
+          revision,
+        });
         return Promise.resolve();
       });
       return;
@@ -501,6 +619,28 @@ class EditorSession {
       }
       return;
     }
+    if (value["kind"] === "runScan") {
+      const metadata = this.metadata;
+      if (metadata === undefined) {
+        this.postError(
+          new InspectorError(
+            "INVALID_MESSAGE",
+            "metadata is not ready for scanning",
+            true,
+          ),
+        );
+        return;
+      }
+      try {
+        const selection = decodeScanSelection(value, metadata);
+        this.enqueue(async (revision) => {
+          await this.loadScan(revision, selection);
+        });
+      } catch (error) {
+        this.postError(toInspectorError(error));
+      }
+      return;
+    }
     this.postError(
       new InspectorError("INVALID_MESSAGE", "unknown webview message"),
     );
@@ -526,69 +666,43 @@ class EditorSession {
 
   private async reload(revision: number): Promise<void> {
     this.post({ kind: "loading", stage: "source", revision });
-    await this.source?.close();
-    this.source = undefined;
     const preferences = readPreferences(this.document.uri);
     const nextSource = await this.runtime.openSource(
       this.document.uri,
       preferences.maximumVirtualFileBytes,
     );
+    let accepted = false;
     try {
       this.requireCurrent(revision);
+      await this.supervisor.restart();
+      this.post({ kind: "loading", stage: "metadata", revision });
+      const metadata = await this.supervisor.inspectMetadata(nextSource);
+      this.requireCurrent(revision);
+
+      const previousSource = this.source;
+      await previousSource?.close();
+      this.source = nextSource;
+      accepted = true;
+      this.columnPageCache.clear();
+      this.metadata = metadata;
+      this.metadataGeneration = this.supervisor.metrics.generations;
+
+      this.post({
+        kind: "metadata",
+        revision,
+        source: {
+          uri: nextSource.identity.uri,
+          size: nextSource.size.toString(),
+          revision: nextSource.identity.revision,
+        },
+        capabilities: this.supervisor.capabilities,
+        metadata,
+      });
     } catch (error) {
-      await nextSource.close();
-      throw error;
-    }
-    this.source = nextSource;
-    await this.supervisor.restart();
-    this.post({ kind: "loading", stage: "metadata", revision });
-    const metadata = await this.supervisor.inspectMetadata(this.source);
-    this.requireCurrent(revision);
-    this.metadata = metadata;
-    this.post({
-      kind: "metadata",
-      revision,
-      source: {
-        uri: this.source.identity.uri,
-        size: this.source.size.toString(),
-        revision: this.source.identity.revision,
-      },
-      capabilities: this.supervisor.capabilities,
-      metadata,
-    });
-    const firstGroup = metadata.rowGroups[0];
-    if (
-      firstGroup !== undefined &&
-      firstGroup.rows > 0 &&
-      metadata.schema.length > 0
-    ) {
-      const rowCount = Math.min(firstGroup.rows, preferences.pageSize);
-      if (preferences.orientation === "rows") {
-        const columns = rootColumnIds(metadata).slice(0, 6);
-        if (columns.length > 0) {
-          await this.loadRows(
-            revision,
-            {
-              rowGroup: 0,
-              columns,
-              rowOffset: 0n,
-              rowCount,
-            },
-            false,
-          );
-        } else {
-          this.post({ kind: "empty", revision });
-        }
-      } else {
-        await this.loadSelection(revision, {
-          rowGroup: 0,
-          column: 0,
-          rowOffset: 0n,
-          rowCount,
-        });
+      if (!accepted) {
+        await nextSource.close();
       }
-    } else {
-      this.post({ kind: "empty", revision });
+      throw error;
     }
   }
 
@@ -607,6 +721,7 @@ class EditorSession {
       const metadata = await this.supervisor.inspectMetadata(source);
       this.requireCurrent(revision);
       this.metadata = metadata;
+      this.metadataGeneration = this.supervisor.metrics.generations;
       this.post({
         kind: "metadata",
         revision,
@@ -647,7 +762,14 @@ class EditorSession {
     this.post({ kind: "loading", stage, revision });
     const metadata = await this.supervisor.inspectMetadata(source);
     this.requireCurrent(revision);
+    if (
+      this.metadata !== undefined &&
+      JSON.stringify(this.metadata.schema) !== JSON.stringify(metadata.schema)
+    ) {
+      this.columnPageCache.clear();
+    }
     this.metadata = metadata;
+    this.metadataGeneration = this.supervisor.metrics.generations;
     this.post({
       kind: "metadata",
       revision,
@@ -665,25 +787,94 @@ class EditorSession {
   private async loadRows(
     revision: number,
     selection: RowsSelection,
-    resetSession = true,
   ): Promise<void> {
-    const source = resetSession
-      ? (await this.resetMetadata(revision, "rows")).source
-      : this.source;
+    const source = this.source;
     if (source === undefined) {
       throw new InspectorError("INTERNAL", "inspection source is unavailable");
     }
-    this.post({ kind: "loading", stage: "rowGroup", revision });
-    const rowGroup = await this.supervisor.inspectRowGroup(
-      source,
-      selection.rowGroup,
+    const key: ColumnPageKey = {
+      sourceRevision: source.identity.revision,
+      rowGroup: selection.rowGroup,
+      offset: selection.rowOffset.toString(),
+      count: selection.rowCount,
+    };
+    const cached = this.columnPageCache.assemble(key, selection.columns);
+    if (cached !== undefined) {
+      this.requireCurrent(revision);
+      this.post({ kind: "rows", revision, rows: cached });
+      return;
+    }
+    await this.ensureMetadataSession(revision);
+    this.requireCurrent(revision);
+    const missing = this.columnPageCache.missingColumns(
+      key,
+      selection.columns,
     );
-    this.requireCurrent(revision);
-    this.post({ kind: "rowGroup", revision, rowGroup });
+    if (missing.length === 0) {
+      const assembled = this.columnPageCache.assemble(key, selection.columns);
+      if (assembled === undefined) {
+        throw new InspectorError(
+          "INTERNAL",
+          "column cache could not assemble a complete projection",
+        );
+      }
+      this.post({ kind: "rows", revision, rows: assembled });
+      return;
+    }
     this.post({ kind: "loading", stage: "rows", revision });
-    const rows = await this.supervisor.inspectRows(source, selection);
+    const fragment = await this.supervisor.inspectRows(source, {
+      ...selection,
+      columns: missing,
+    });
     this.requireCurrent(revision);
+    if (source !== this.source || source.identity.revision !== key.sourceRevision) {
+      throw new InspectorError(
+        "CANCELLED",
+        "column fragment belongs to a stale source",
+        true,
+      );
+    }
+    const rows = this.columnPageCache.mergeAndAssemble(
+      key,
+      fragment,
+      selection.columns,
+    );
     this.post({ kind: "rows", revision, rows });
+  }
+
+  private async ensureMetadataSession(revision: number): Promise<void> {
+    const source = this.source;
+    if (source === undefined) {
+      throw new InspectorError("INTERNAL", "inspection source is unavailable");
+    }
+    if (
+      this.metadata !== undefined &&
+      this.metadataGeneration === this.supervisor.metrics.generations
+    ) {
+      return;
+    }
+    this.post({ kind: "loading", stage: "metadata", revision });
+    const metadata = await this.supervisor.inspectMetadata(source);
+    this.requireCurrent(revision);
+    if (
+      this.metadata !== undefined &&
+      JSON.stringify(this.metadata.schema) !== JSON.stringify(metadata.schema)
+    ) {
+      this.columnPageCache.clear();
+    }
+    this.metadata = metadata;
+    this.metadataGeneration = this.supervisor.metrics.generations;
+    this.post({
+      kind: "metadata",
+      revision,
+      source: {
+        uri: source.identity.uri,
+        size: source.size.toString(),
+        revision: source.identity.revision,
+      },
+      capabilities: this.supervisor.capabilities,
+      metadata,
+    });
   }
 
   private async loadFilter(
@@ -695,6 +886,41 @@ class EditorSession {
     const filter = await this.supervisor.inspectFilter(source, selection);
     this.requireCurrent(revision);
     this.post({ kind: "filter", revision, filter });
+  }
+
+  private async loadScan(
+    revision: number,
+    selection: ScanSelection,
+  ): Promise<void> {
+    const { source } = await this.resetMetadata(revision, "scan");
+    this.post({ kind: "loading", stage: "scan", revision });
+    const clock = new ScanProgressClock((update) => {
+      if (!this.disposed && revision === this.revision) {
+        this.post({
+          kind: "scanProgress",
+          revision,
+          ...update,
+        });
+      }
+    });
+    try {
+      const scan = await this.supervisor.inspectScan(
+        source,
+        selection.plan,
+        (progress) => {
+          clock.update(progress);
+        },
+      );
+      this.requireCurrent(revision);
+      this.post({
+        kind: "scan",
+        revision,
+        scan,
+        elapsedMs: clock.elapsedMs,
+      });
+    } finally {
+      clock.stop();
+    }
   }
 
   private postPreferences(): void {
@@ -743,6 +969,7 @@ class EditorSession {
     this.revision += 1;
     this.configurationDisposable?.dispose();
     this.configurationDisposable = undefined;
+    this.columnPageCache.clear();
     await this.supervisor.dispose();
     await this.source?.close();
     this.source = undefined;

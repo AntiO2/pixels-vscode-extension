@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "analyze.png": {
+    "width": 1440,
+    "height": 900,
+    "sha256": "dc95ce51d3c254b1e584005f2515ae237263ddc9ec07ef257991172d6fffe872"
+  },
+  "data.png": {
+    "width": 1440,
+    "height": 900,
+    "sha256": "c4dda15b653a35cc39ee149afbe4859eedec65318503470060912c5e78a4c63a"
+  },
+  "query.png": {
+    "width": 1440,
+    "height": 900,
+    "sha256": "96ade3d7d132884894bdda54bdb2d6f1fabce7e11a6c50a073991740bf921f47"
+  }
+}

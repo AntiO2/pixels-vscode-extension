@@ -42,6 +42,16 @@ export interface EmscriptenInspectorModule {
     cursorSize: number,
     limit: number,
   ): number;
+  _pixels_inspector_begin_scan(
+    handle: number,
+    planPointer: number,
+    planSize: number,
+  ): number;
+  _pixels_inspector_copy_scan_progress(
+    handle: number,
+    destination: number,
+    destinationSize: number,
+  ): number;
   _pixels_inspector_next_range(
     handle: number,
     offsetPointer: number,

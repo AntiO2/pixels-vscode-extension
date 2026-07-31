@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "abiVersion": 3,
-  "coreCommit": "64b5b5075076c571606dfc65eeebc29886717980",
+  "abiVersion": 4,
+  "coreCommit": "5f45bd9064ace98b6788080e23fbcad6913e4b12",
   "toolchain": {
     "emscripten": "6.0.5",
     "protobuf": "3.21.6"
@@ -12,8 +12,14 @@
     "generic-page-v1",
     "rows-v1",
     "filter-v1",
+    "scan-v2",
     "default-rows-100",
+    "default-scan-rows-20",
     "max-rows-500",
+    "max-projection-columns-128",
+    "max-expression-nodes-64",
+    "max-order-keys-8",
+    "max-ordered-window-rows-4096",
     "type-inventory-20-v1",
     "portable-nested-v1",
     "inactive-compression-metadata-v1",
@@ -22,12 +28,12 @@
   ],
   "artifacts": {
     "pixels-inspector-wasm.cjs": {
-      "bytes": 12634,
-      "sha256": "58b60ac07a34aa5bd45af69abf5f5d1caa24dbac73833dcfe3d8819052681868"
+      "bytes": 12886,
+      "sha256": "10ca62e927125e3ae9604feef215b3174dff344c21dd2e43e95a1e46cf4847cd"
     },
     "pixels-inspector-wasm.wasm": {
-      "bytes": 334081,
-      "sha256": "478b610646d20b3e3d5e83e2a71ce7918d0ec7cc412ec6c39868d8d7fffe3609"
+      "bytes": 389654,
+      "sha256": "0e0a84ab66db89a93db968c303c63e4ef35a46dec4fcb807678184062c6189e6"
     }
   }
 }

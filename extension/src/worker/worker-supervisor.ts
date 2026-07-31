@@ -8,6 +8,7 @@ import {
   decodePageResultJson,
   decodeRowGroupResultJson,
   decodeRowsResultJson,
+  decodeScanResultV2Json,
   decodeWorkerMessage,
   parseUnsignedDecimal,
   toInspectorError,
@@ -21,6 +22,9 @@ import type {
   PageResult,
   RowGroupResult,
   RowsResult,
+  ScanPlanV2,
+  ScanProgressV2,
+  ScanResultV2,
   ControllerMessage,
   ErrorMessage,
   RangeNeededMessage,
@@ -45,6 +49,8 @@ interface ActiveOperation {
   readonly resolve: (json: string) => void;
   readonly reject: (error: InspectorError) => void;
   readonly timer: ReturnType<typeof setTimeout>;
+  readonly onProgress?: (progress: ScanProgressV2) => void;
+  lastProgress?: ScanProgressV2;
 }
 
 export interface SupervisorMetrics {
@@ -70,6 +76,7 @@ export class WorkerSupervisor {
     private readonly manifest: CoreManifest,
     private readonly locations: CoreLocations,
     private readonly operationTimeoutMs = 10_000,
+    private readonly scanTimeoutMs = 120_000,
   ) {}
 
   public get metrics(): SupervisorMetrics {
@@ -161,7 +168,7 @@ export class WorkerSupervisor {
     },
   ): Promise<RowsResult> {
     await this.initialize();
-    return decodeRowsResultJson(
+    const result = decodeRowsResultJson(
       await this.startOperation(
         source,
         "rows",
@@ -175,6 +182,21 @@ export class WorkerSupervisor {
         }),
       ),
     );
+    if (
+      result.rowGroup !== options.rowGroup ||
+      result.offset !== options.rowOffset.toString() ||
+      result.count !== options.rowCount ||
+      result.columns.length !== options.columns.length ||
+      result.columns.some(
+        (column, index) => column.id !== options.columns[index],
+      )
+    ) {
+      throw new InspectorError(
+        "INVALID_MESSAGE",
+        "Core rows result does not match the requested window/projection",
+      );
+    }
+    return result;
   }
 
   public async inspectFilter(
@@ -205,6 +227,57 @@ export class WorkerSupervisor {
         }),
       ),
     );
+  }
+
+  public async inspectScan(
+    source: RangeSource,
+    plan: ScanPlanV2,
+    onProgress?: (progress: ScanProgressV2) => void,
+  ): Promise<ScanResultV2> {
+    await this.initialize();
+    if (this.coreCapabilities?.scan !== "scan-v2") {
+      throw new InspectorError(
+        "INVALID_MESSAGE",
+        "Core does not advertise scan-v2",
+        true,
+      );
+    }
+    const result = decodeScanResultV2Json(
+      await this.startOperation(
+        source,
+        "scan",
+        (requestId) => ({
+          kind: "inspectScan",
+          requestId,
+          plan,
+        }),
+        {
+          timeoutMs: this.scanTimeoutMs,
+          ...(onProgress === undefined ? {} : { onProgress }),
+        },
+      ),
+    );
+    const requestedColumns =
+      plan.projection.kind === "columns"
+        ? plan.projection.columns
+        : undefined;
+    if (
+      result.page.offsetApplied !== plan.offset ||
+      result.page.limit !== plan.limit ||
+      result.scan.ordered !== (plan.orderBy.length > 0) ||
+      (requestedColumns !== undefined &&
+        (result.columns.length !== requestedColumns.length ||
+          result.columns.some(
+            (column, index) =>
+              column.id !== requestedColumns[index],
+          )))
+    ) {
+      throw new InspectorError(
+        "INVALID_MESSAGE",
+        "Core scan result does not match the submitted plan",
+      );
+    }
+    return result;
   }
 
   public async cancelActive(): Promise<void> {
@@ -333,6 +406,10 @@ export class WorkerSupervisor {
     source: RangeSource,
     operation: ResultMessage["operation"],
     createMessage: (requestId: string) => ControllerMessage,
+    options: {
+      readonly timeoutMs?: number;
+      readonly onProgress?: (progress: ScanProgressV2) => void;
+    } = {},
   ): Promise<string> {
     this.requireNotDisposed();
     if (this.active !== undefined) {
@@ -342,16 +419,17 @@ export class WorkerSupervisor {
       );
     }
     const requestId = `${String(this.generation)}:${crypto.randomUUID()}`;
+    const timeoutMs = options.timeoutMs ?? this.operationTimeoutMs;
     return await new Promise<string>((resolve, reject) => {
       const timer = setTimeout(() => {
         void this.failAndReplace(
           new InspectorError(
             "TIMEOUT",
-            `${operation} exceeded ${String(this.operationTimeoutMs)} ms`,
+            `${operation} exceeded ${String(timeoutMs)} ms`,
             true,
           ),
         );
-      }, this.operationTimeoutMs);
+      }, timeoutMs);
       this.active = {
         requestId,
         operation,
@@ -360,6 +438,9 @@ export class WorkerSupervisor {
         resolve,
         reject,
         timer,
+        ...(options.onProgress === undefined
+          ? {}
+          : { onProgress: options.onProgress }),
       };
       this.worker?.post(createMessage(requestId));
     });
@@ -383,6 +464,18 @@ export class WorkerSupervisor {
       return;
     }
     if (message.kind === "error") {
+      if (
+        this.active === undefined ||
+        message.requestId !== this.active.requestId
+      ) {
+        await this.failAndReplace(
+          new InspectorError(
+            "STALE_RESPONSE",
+            "worker error does not match the active request",
+          ),
+        );
+        return;
+      }
       const error = this.workerError(message);
       this.rejectActive(error);
       if (!message.recoverable) {
@@ -404,6 +497,25 @@ export class WorkerSupervisor {
       await this.fulfillRange(active, message);
       return;
     }
+    if (message.kind === "progress") {
+      if (active.operation !== "scan") {
+        await this.failAndReplace(
+          new InspectorError(
+            "INVALID_MESSAGE",
+            "scan progress belongs to a non-scan operation",
+          ),
+        );
+        return;
+      }
+      try {
+        this.requireMonotonicProgress(active.lastProgress, message.progress);
+        active.lastProgress = message.progress;
+        active.onProgress?.(message.progress);
+      } catch (error) {
+        await this.failAndReplace(toInspectorError(error));
+      }
+      return;
+    }
     if (message.operation !== active.operation) {
       await this.failAndReplace(
         new InspectorError(
@@ -416,6 +528,32 @@ export class WorkerSupervisor {
     clearTimeout(active.timer);
     this.active = undefined;
     active.resolve(message.json);
+  }
+
+  private requireMonotonicProgress(
+    previous: ScanProgressV2 | undefined,
+    current: ScanProgressV2,
+  ): void {
+    if (previous === undefined) {
+      return;
+    }
+    const phases = ["validating", "scanning", "projecting", "complete"];
+    if (
+      phases.indexOf(current.phase) < phases.indexOf(previous.phase) ||
+      current.rowGroupsTotal !== previous.rowGroupsTotal ||
+      BigInt(current.rowsTotal) !== BigInt(previous.rowsTotal) ||
+      current.rowGroupsConsidered < previous.rowGroupsConsidered ||
+      current.scannedRowGroups < previous.scannedRowGroups ||
+      current.prunedRowGroups < previous.prunedRowGroups ||
+      BigInt(current.scannedRows) < BigInt(previous.scannedRows) ||
+      BigInt(current.prunedRows) < BigInt(previous.prunedRows) ||
+      BigInt(current.matchedRows) < BigInt(previous.matchedRows)
+    ) {
+      throw new InspectorError(
+        "INVALID_MESSAGE",
+        "scan progress regressed",
+      );
+    }
   }
 
   private async fulfillRange(
@@ -515,7 +653,11 @@ export class WorkerSupervisor {
 
   private workerError(message: ErrorMessage): InspectorError {
     return new InspectorError(
-      message.code === "CANCELLED" ? "CANCELLED" : "CORE_ERROR",
+      message.code === "CANCELLED"
+        ? "CANCELLED"
+        : message.code === "INVALID_CURSOR"
+          ? "INVALID_CURSOR"
+          : "CORE_ERROR",
       message.message,
       message.recoverable,
     );

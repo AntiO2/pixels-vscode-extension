@@ -1,0 +1,285 @@
+@font-face {
+  font-family: "codicon";
+  font-display: block;
+  src: url("./codicon.ttf") format("truetype");
+}
+
+:root {
+  color-scheme: light dark;
+  --px-canvas: var(--vscode-editor-background);
+  --px-surface: var(--vscode-sideBar-background, var(--vscode-editor-background));
+  --px-surface-raised: var(--vscode-editorWidget-background, var(--px-surface));
+  --px-material: color-mix(in srgb, var(--px-surface-raised) 88%, transparent);
+  --px-material-heavy: color-mix(in srgb, var(--px-surface) 94%, transparent);
+  --px-light-edge: var(--vscode-widget-border, var(--px-border));
+  --px-text: var(--vscode-foreground);
+  --px-text-secondary: var(--vscode-descriptionForeground);
+  --px-border: var(--vscode-panel-border, var(--vscode-widget-border));
+  --px-border-strong: var(--vscode-contrastBorder, var(--px-border));
+  /*
+   * VS Code can emit optional theme properties with an empty value. An empty
+   * custom property still counts as defined, so it defeats var() fallbacks and
+   * invalidates every color-mix() that consumes it. Keep paint-critical chart
+   * and map aliases rooted in the always-present editor/focus colors.
+   */
+  --px-accent: var(--vscode-focusBorder);
+  --px-accent-strong: var(--px-accent);
+  --px-accent-soft: color-mix(
+    in srgb,
+    var(--vscode-focusBorder) 16%,
+    var(--vscode-editor-background)
+  );
+  --px-accent-fill: color-mix(
+    in srgb,
+    var(--vscode-focusBorder) 24%,
+    var(--vscode-editor-background)
+  );
+  --px-accent-text: var(--px-text);
+  --px-related: var(--vscode-list-hoverBackground);
+  --px-hover: var(--vscode-list-hoverBackground);
+  --px-type: var(--vscode-symbolIcon-classForeground, var(--vscode-textLink-foreground, var(--px-text-secondary)));
+  --px-value: var(--vscode-debugTokenExpression-value, var(--px-text));
+  --px-focus: var(--vscode-focusBorder);
+  --px-error: var(--vscode-errorForeground);
+  --px-error-bg: var(--vscode-inputValidation-errorBackground);
+  --px-warning: var(--vscode-editorWarning-foreground);
+  --px-neutral-chart: color-mix(
+    in srgb,
+    var(--vscode-foreground) 62%,
+    var(--vscode-editor-background)
+  );
+  --px-chart-primary: var(--vscode-focusBorder);
+  --px-chart-secondary: color-mix(
+    in srgb,
+    var(--vscode-foreground) 38%,
+    var(--vscode-editor-background)
+  );
+  --px-chart-muted: color-mix(
+    in srgb,
+    var(--vscode-foreground) 62%,
+    var(--vscode-editor-background)
+  );
+  --px-map-fill: #183349;
+  --px-map-hover: #214662;
+  --px-map-selected: #285f89;
+  --px-map-label: #eaf5ff;
+  --px-map-selected-label: #ffffff;
+  --px-map-separator: #7899b2;
+  --px-progress: var(--vscode-progressBar-background, var(--px-accent));
+  --px-code-bg: var(--vscode-textCodeBlock-background, var(--px-surface));
+  --px-control-bg: var(--vscode-input-background);
+  --px-control-text: var(--vscode-input-foreground);
+  --px-control-border: var(--vscode-input-border, var(--px-border));
+  --px-table-header: var(--vscode-editorStickyScroll-background, var(--px-canvas));
+  --px-overlay: var(--vscode-editorHoverWidget-background, var(--px-surface-raised));
+  --px-overlay-border: var(--vscode-editorHoverWidget-border, var(--px-border-strong));
+  --px-shadow-color: var(--vscode-widget-shadow, var(--px-border-strong));
+  --px-shadow-soft: color-mix(in srgb, var(--px-shadow-color) 24%, transparent);
+  --px-shadow-medium: color-mix(in srgb, var(--px-shadow-color) 48%, transparent);
+  --px-shadow-small: 0 1px 4px var(--px-shadow-soft);
+  --px-shadow: 0 12px 32px var(--px-shadow-medium);
+  font-family: var(--vscode-font-family);
+  font-size: max(14px, var(--vscode-font-size));
+  font-optical-sizing: auto;
+  line-height: 1.42;
+  color: var(--px-text);
+  background: var(--px-canvas);
+}
+
+/*
+ * Storage Map paint must survive VS Code themes that emit optional color
+ * properties as defined-but-empty. These cool palettes switch with the host
+ * theme class and contain no var() or color-mix() dependency by design.
+ */
+.vscode-light {
+  --px-canvas: #f7f9fb;
+  --px-surface: #edf2f6;
+  --px-surface-raised: #ffffff;
+  --px-material: rgb(255 255 255 / 92%);
+  --px-material-heavy: rgb(234 241 246 / 96%);
+  --px-light-edge: #dbe4eb;
+  --px-text-secondary: #526373;
+  --px-border: #c7d3dc;
+  --px-border-strong: #8ba2b3;
+  --px-type: #43596b;
+  --px-value: #17212b;
+  --px-focus: #286f9f;
+  --px-overlay: #ffffff;
+  --px-overlay-border: #819aac;
+  --px-shadow-soft: rgb(42 64 80 / 16%);
+  --px-shadow-medium: rgb(42 64 80 / 28%);
+  --px-map-fill: #e7f1f8;
+  --px-map-hover: #d8eafa;
+  --px-map-selected: #bddcf2;
+  --px-map-label: #17324d;
+  --px-map-selected-label: #102a43;
+  --px-map-separator: #6789a4;
+}
+
+.vscode-dark {
+  --px-canvas: #11171d;
+  --px-surface: #182129;
+  --px-surface-raised: #202c35;
+  --px-material: rgb(32 44 53 / 92%);
+  --px-material-heavy: rgb(24 33 41 / 96%);
+  --px-light-edge: #2b3b47;
+  --px-text-secondary: #a8b7c3;
+  --px-border: #344753;
+  --px-border-strong: #60798a;
+  --px-type: #9eb6c8;
+  --px-value: #edf4f9;
+  --px-focus: #69a9d8;
+  --px-overlay: #202c35;
+  --px-overlay-border: #60798a;
+  --px-shadow-soft: rgb(0 0 0 / 28%);
+  --px-shadow-medium: rgb(0 0 0 / 52%);
+  --px-map-fill: #183349;
+  --px-map-hover: #214662;
+  --px-map-selected: #285f89;
+  --px-map-label: #eaf5ff;
+  --px-map-selected-label: #ffffff;
+  --px-map-separator: #7899b2;
+}
+
+.vscode-high-contrast,
+.vscode-high-contrast-light {
+  --px-canvas: var(--vscode-editor-background);
+  --px-surface: var(--vscode-editor-background);
+  --px-surface-raised: var(--vscode-editor-background);
+  --px-material: var(--px-surface-raised);
+  --px-material-heavy: var(--px-surface);
+  --px-light-edge: var(--vscode-foreground);
+  --px-shadow-soft: transparent;
+  --px-shadow-medium: transparent;
+  --px-border: var(--vscode-foreground);
+  --px-border-strong: var(--vscode-foreground);
+  --px-accent: var(--vscode-focusBorder);
+  --px-accent-strong: var(--vscode-focusBorder);
+  --px-accent-soft: var(--vscode-list-activeSelectionBackground);
+  --px-accent-fill: var(--vscode-list-activeSelectionBackground);
+  --px-accent-text: var(--vscode-list-activeSelectionForeground, var(--px-text));
+  --px-related: var(--vscode-list-hoverBackground);
+  --px-hover: var(--vscode-list-hoverBackground);
+  --px-focus: var(--vscode-focusBorder);
+  --px-type: currentColor;
+  --px-value: currentColor;
+  --px-control-bg: var(--vscode-input-background);
+  --px-control-border: var(--vscode-contrastBorder);
+  --px-table-header: var(--vscode-editorStickyScroll-background, var(--px-canvas));
+  --px-map-fill: var(--vscode-editor-background);
+  --px-map-hover: var(--vscode-editor-background);
+  --px-map-selected: var(--vscode-foreground);
+  --px-map-label: var(--vscode-foreground);
+  --px-map-selected-label: var(--vscode-editor-background);
+  --px-map-separator: var(--vscode-foreground);
+  --px-overlay: var(--px-surface-raised);
+  --px-overlay-border: var(--vscode-foreground);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  min-width: 0;
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--px-canvas);
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  color: inherit;
+}
+
+button,
+[tabindex="0"],
+input,
+select,
+summary {
+  outline: none;
+}
+
+button:focus-visible,
+[tabindex="0"]:focus-visible,
+input:focus-visible,
+select:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--px-focus);
+  outline-offset: -2px;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: 1.05rem;
+  font-weight: 650;
+  line-height: 1.2;
+  letter-spacing: -0.012em;
+}
+
+h2 {
+  font-size: 1rem;
+  font-weight: 650;
+  line-height: 1.25;
+  letter-spacing: -0.008em;
+}
+
+h3 {
+  font-size: 0.88rem;
+  font-weight: 650;
+  line-height: 1.3;
+  letter-spacing: 0.004em;
+}
+
+.numeric,
+code {
+  font-family: var(--vscode-editor-font-family);
+  font-variant-numeric: tabular-nums;
+}
+
+.muted,
+.annotation {
+  color: var(--px-text-secondary);
+}
+
+.annotation {
+  font-size: 0.86rem;
+  white-space: nowrap;
+}
+
+.codicon {
+  display: inline-grid;
+  width: 1rem;
+  height: 1rem;
+  place-items: center;
+  font-family: "codicon";
+  font-size: 16px;
+  font-style: normal;
+  font-weight: normal;
+  line-height: 1;
+  text-align: center;
+  user-select: none;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --px-material: var(--px-surface-raised);
+    --px-material-heavy: var(--px-surface);
+  }
+}

@@ -1,8 +1,6 @@
 # Updating the Pixels Core submodule
 
-Pixels is developed as the `third_party/pixels` Git submodule in this
-repository. A sibling checkout such as `/home/anti/projects/pixels` is never a
-build input.
+Pixels is developed as the `third_party/pixels` Git submodule in this repository. A separate sibling checkout is never a build input.
 
 1. Enter `third_party/pixels`, create or select the intended Core branch, make
    the C++ change there, and run the Core native and WASM tests.

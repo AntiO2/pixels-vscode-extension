@@ -9,6 +9,7 @@ import {
 
 import {
   deriveRowGroupBands,
+  pixelLabelStride,
   pixelTickPosition,
 } from "../../webview/src/visualization/geometry.js";
 
@@ -55,10 +56,16 @@ describe("source-backed storage geometry", () => {
     ]);
   });
 
-  it("treats pixel positions as logical ticks and clamps malformed geometry", () => {
+  it("treats pixel starts as chunk-byte ticks and clamps malformed geometry", () => {
     expect(pixelTickPosition(25, 100)).toBe(0.25);
     expect(pixelTickPosition(-1, 100)).toBe(0);
     expect(pixelTickPosition(101, 100)).toBe(1);
     expect(pixelTickPosition(10, 0)).toBe(0);
+  });
+
+  it("keeps all ticks while deterministically thinning labels at narrow widths", () => {
+    expect(pixelLabelStride(3, 220)).toBe(1);
+    expect(pixelLabelStride(12, 220)).toBe(2);
+    expect(pixelLabelStride(12, 108)).toBe(4);
   });
 });

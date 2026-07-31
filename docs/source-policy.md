@@ -17,7 +17,4 @@ Virtual/provider resources have two explicit strategies:
   copy, stat-after, mutation rejection, atomic publication of immutable
   identity, cache invalidation, and cleanup on error or cancellation.
 
-The browser/virtual policy must never allocate an unbounded provider response.
-Oversized resources receive a visible typed error until a host-specific
-snapshot strategy is available. Direct object-storage protocols are not part of
-this policy yet.
+The browser/virtual policy must never allocate an unbounded provider response. Oversized resources receive a visible typed error until a host-specific snapshot strategy is available. Direct object-storage protocols are not part of this policy yet.

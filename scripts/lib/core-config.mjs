@@ -7,16 +7,22 @@ export const repositoryRoot = path.resolve(
 );
 export const coreRoot = path.join(repositoryRoot, "third_party", "pixels");
 export const coreCommit =
-  "64b5b5075076c571606dfc65eeebc29886717980";
-export const coreAbi = 3;
+  "5f45bd9064ace98b6788080e23fbcad6913e4b12";
+export const coreAbi = 4;
 export const coreCapabilities = Object.freeze([
   "metadata-v2",
   "row-group-layout-v1",
   "generic-page-v1",
   "rows-v1",
   "filter-v1",
+  "scan-v2",
   "default-rows-100",
+  "default-scan-rows-20",
   "max-rows-500",
+  "max-projection-columns-128",
+  "max-expression-nodes-64",
+  "max-order-keys-8",
+  "max-ordered-window-rows-4096",
   "type-inventory-20-v1",
   "portable-nested-v1",
   "inactive-compression-metadata-v1",

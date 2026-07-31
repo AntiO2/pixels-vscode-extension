@@ -1,7 +1,13 @@
 import {
   CORE_ABI_VERSION,
   DEFAULT_FILTER_ROWS,
+  DEFAULT_SCAN_ROWS,
+  MAX_EXPRESSION_NODES,
   MAX_OPERATION_ROWS,
+  MAX_ORDERED_WINDOW_ROWS,
+  MAX_ORDER_KEYS,
+  MAX_PROJECTION_COLUMNS,
+  MAX_SCAN_ROWS,
 } from "./constants.js";
 import { InspectorError } from "./errors.js";
 
@@ -48,7 +54,7 @@ export interface CoreTypeCapability {
   readonly name: string;
 }
 
-export interface CoreCapabilities {
+interface BaseCoreCapabilities {
   readonly abi: number;
   readonly page: "generic-v1";
   readonly rows: "rows-v1";
@@ -66,6 +72,27 @@ export interface CoreCapabilities {
   readonly nested: "portable-v1";
 }
 
+export type CoreCapabilities = BaseCoreCapabilities & (
+  | {
+      readonly scan: "scan-v2";
+      readonly defaultScanRows: typeof DEFAULT_SCAN_ROWS;
+      readonly maxScanRows: typeof MAX_SCAN_ROWS;
+      readonly maxProjectionColumns: typeof MAX_PROJECTION_COLUMNS;
+      readonly maxExpressionNodes: typeof MAX_EXPRESSION_NODES;
+      readonly maxOrderKeys: typeof MAX_ORDER_KEYS;
+      readonly maxOrderedWindowRows: typeof MAX_ORDERED_WINDOW_ROWS;
+    }
+  | {
+      readonly scan?: undefined;
+      readonly defaultScanRows?: undefined;
+      readonly maxScanRows?: undefined;
+      readonly maxProjectionColumns?: undefined;
+      readonly maxExpressionNodes?: undefined;
+      readonly maxOrderKeys?: undefined;
+      readonly maxOrderedWindowRows?: undefined;
+    }
+);
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -80,6 +107,21 @@ export function decodeCoreCapabilities(value: unknown): CoreCapabilities {
   const types = value["types"];
   const encodings = value["encodings"];
   const compression = value["compression"];
+  const hasScan = value["scan"] === "scan-v2";
+  const scanFieldsValid = hasScan
+    ? value["defaultScanRows"] === DEFAULT_SCAN_ROWS &&
+      value["maxScanRows"] === MAX_SCAN_ROWS &&
+      value["maxProjectionColumns"] === MAX_PROJECTION_COLUMNS &&
+      value["maxExpressionNodes"] === MAX_EXPRESSION_NODES &&
+      value["maxOrderKeys"] === MAX_ORDER_KEYS &&
+      value["maxOrderedWindowRows"] === MAX_ORDERED_WINDOW_ROWS
+    : value["scan"] === undefined &&
+      value["defaultScanRows"] === undefined &&
+      value["maxScanRows"] === undefined &&
+      value["maxProjectionColumns"] === undefined &&
+      value["maxExpressionNodes"] === undefined &&
+      value["maxOrderKeys"] === undefined &&
+      value["maxOrderedWindowRows"] === undefined;
   if (
     value["abi"] !== CORE_ABI_VERSION ||
     value["page"] !== "generic-v1" ||
@@ -88,6 +130,7 @@ export function decodeCoreCapabilities(value: unknown): CoreCapabilities {
     value["rowGroup"] !== "layout-v1" ||
     value["maxRows"] !== MAX_OPERATION_ROWS ||
     value["defaultRows"] !== DEFAULT_FILTER_ROWS ||
+    !scanFieldsValid ||
     value["nested"] !== "portable-v1" ||
     !Array.isArray(types) ||
     types.length !== TYPE_NAMES.length ||
@@ -134,6 +177,17 @@ export function decodeCoreCapabilities(value: unknown): CoreCapabilities {
     rowGroup: "layout-v1",
     maxRows: MAX_OPERATION_ROWS,
     defaultRows: DEFAULT_FILTER_ROWS,
+    ...(hasScan
+      ? {
+          scan: "scan-v2" as const,
+          defaultScanRows: DEFAULT_SCAN_ROWS,
+          maxScanRows: MAX_SCAN_ROWS,
+          maxProjectionColumns: MAX_PROJECTION_COLUMNS,
+          maxExpressionNodes: MAX_EXPRESSION_NODES,
+          maxOrderKeys: MAX_ORDER_KEYS,
+          maxOrderedWindowRows: MAX_ORDERED_WINDOW_ROWS,
+        }
+      : {}),
     types: decodedTypes,
     encodings: ENCODINGS,
     compression: {

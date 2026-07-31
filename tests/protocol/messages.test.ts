@@ -6,14 +6,16 @@ import {
   decodeFilterResultJson,
   decodePageResultJson,
   decodeRowsResultJson,
+  decodeScanResultV2Json,
   decodeWorkerMessage,
+  encodeScanPlanV2,
   parseUnsignedDecimal,
 } from "@pixels-inspector/protocol-client";
 import { describe, expect, it } from "vitest";
 
 const manifest = {
   schemaVersion: 1,
-  abiVersion: 3,
+  abiVersion: 4,
   coreCommit: "8".repeat(40),
   toolchain: {
     emscripten: "6.0.5",
@@ -220,5 +222,163 @@ describe("worker protocol boundary", () => {
         '"completed":false,"truncated":false,"cursor":"v1:1:0"}',
       ),
     ).toThrow("inconsistent");
+  });
+
+  it("encodes the canonical little-endian PXSV packet and bounds plans", () => {
+    const plan = {
+      projection: { kind: "columns" as const, columns: [4, 2] },
+      predicate: {
+        kind: "and" as const,
+        children: [
+          {
+            kind: "predicate" as const,
+            column: 4,
+            operator: "ge" as const,
+            literal: "7",
+          },
+          {
+            kind: "not" as const,
+            child: {
+              kind: "predicate" as const,
+              column: 2,
+              operator: "isNull" as const,
+              literal: "",
+            },
+          },
+        ],
+      },
+      orderBy: [
+        { column: 4, direction: "desc" as const, nulls: "last" as const },
+      ],
+      offset: "3",
+      limit: 20,
+    };
+    expect(Buffer.from(encodeScanPlanV2(plan)).toString("hex")).toBe(
+      "5058535601003000910000000000000002000400010000000100000000000000" +
+      "0300000000000000140000000000000004000000020000000105000004000000" +
+      "0000000001000000000000000106000002000000010000000000000000000000" +
+      "0400010000000000000000000000000000000000020002000000000000000000" +
+      "0000000000000000040000000101000037",
+    );
+    const fullCustomPacket = encodeScanPlanV2({
+      projection: { kind: "columns", columns: [3, 2, 1, 0] },
+      orderBy: [],
+      offset: "0",
+      limit: 20,
+    });
+    const fullCustomView = new DataView(
+      fullCustomPacket.buffer,
+      fullCustomPacket.byteOffset,
+      fullCustomPacket.byteLength,
+    );
+    expect(fullCustomView.getUint32(12, true)).toBe(0);
+    expect(fullCustomView.getUint16(16, true)).toBe(4);
+    expect(
+      [0, 1, 2, 3].map((index) =>
+        fullCustomView.getUint32(48 + index * 4, true),
+      ),
+    ).toEqual([3, 2, 1, 0]);
+    expect(
+      decodeControllerMessage({
+        kind: "inspectScan",
+        requestId: "scan-1",
+        plan,
+      }),
+    ).toMatchObject({ kind: "inspectScan", plan });
+    expect(() =>
+      encodeScanPlanV2({
+        ...plan,
+        orderBy: [{ column: 4, direction: "asc", nulls: "first" }],
+        offset: "4090",
+        limit: 20,
+      }),
+    ).toThrow("ordered scan window");
+    expect(() =>
+      encodeScanPlanV2({
+        ...plan,
+        cursor: "not+base64url",
+        offset: "0",
+      }),
+    ).toThrow("base64url");
+    expect(() =>
+      encodeScanPlanV2({
+        ...plan,
+        cursor: "4",
+        offset: "0",
+      }),
+    ).toThrow("base64url");
+    expect(
+      encodeScanPlanV2({
+        ...plan,
+        orderBy: [],
+        cursor: `UFhDMg${"A".repeat(48)}`,
+        offset: "0",
+      }),
+    ).toBeInstanceOf(Uint8Array);
+  });
+
+  it("decodes scan progress and ordered results without natural-order assumptions", () => {
+    const progress = {
+      phase: "scanning",
+      rowGroupsTotal: 2,
+      rowGroupsConsidered: 1,
+      scannedRowGroups: 1,
+      prunedRowGroups: 0,
+      currentRowGroup: 1,
+      retainedCandidates: 2,
+      rowsTotal: "10",
+      scannedRows: "5",
+      prunedRows: "0",
+      matchedRows: "2",
+    };
+    expect(
+      decodeWorkerMessage({
+        kind: "progress",
+        requestId: "scan-1",
+        operation: "scan",
+        progress,
+      }),
+    ).toMatchObject({ kind: "progress", progress });
+    expect(
+      decodeScanResultV2Json(
+        JSON.stringify({
+          operation: "scan-v2",
+          columns: [{ id: 0, name: "id", kind: 4 }],
+          rows: [
+            {
+              rowGroup: 1,
+              localRow: "2",
+              absoluteRow: "7",
+              values: ["7"],
+            },
+            {
+              rowGroup: 0,
+              localRow: "1",
+              absoluteRow: "1",
+              values: ["1"],
+            },
+          ],
+          page: {
+            offsetApplied: "0",
+            limit: 20,
+            returned: 2,
+            continuationAvailable: false,
+            hasMoreExact: true,
+            cursor: null,
+          },
+          scan: { ordered: true, completion: "complete" },
+          progress: {
+            rowGroupsTotal: 2,
+            rowGroupsConsidered: 2,
+            scannedRowGroups: 2,
+            prunedRowGroups: 0,
+            rowsTotal: "10",
+            scannedRows: "10",
+            prunedRows: "0",
+            matchedRows: "2",
+          },
+        }),
+      ),
+    ).toMatchObject({ operation: "scan-v2", scan: { ordered: true } });
   });
 });

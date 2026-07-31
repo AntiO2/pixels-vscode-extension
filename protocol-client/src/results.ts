@@ -3,8 +3,11 @@ import {
   MAX_FILTER_CURSOR_BYTES,
   MAX_OPERATION_ROWS,
   MAX_PROJECTION_COLUMNS,
+  MAX_SCAN_CURSOR_BYTES,
+  MAX_SCAN_ROWS,
 } from "./constants.js";
 import { InspectorError } from "./errors.js";
+import { isCanonicalScanCursorV2 } from "./scan.js";
 
 const SIGNED_DECIMAL = /^(?:0|-?[1-9][0-9]*)$/u;
 const UNSIGNED_DECIMAL = /^(?:0|[1-9][0-9]*)$/u;
@@ -190,6 +193,36 @@ export interface FilterResult {
   readonly completed: boolean;
   readonly truncated: boolean;
   readonly cursor: string | null;
+}
+
+export interface ScanResultProgressV2 {
+  readonly rowGroupsTotal: number;
+  readonly rowGroupsConsidered: number;
+  readonly scannedRowGroups: number;
+  readonly prunedRowGroups: number;
+  readonly rowsTotal: string;
+  readonly scannedRows: string;
+  readonly prunedRows: string;
+  readonly matchedRows: string;
+}
+
+export interface ScanResultV2 {
+  readonly operation: "scan-v2";
+  readonly columns: readonly ProjectedColumn[];
+  readonly rows: readonly ProjectedRow[];
+  readonly page: {
+    readonly offsetApplied: string;
+    readonly limit: number;
+    readonly returned: number;
+    readonly continuationAvailable: boolean;
+    readonly hasMoreExact: boolean;
+    readonly cursor: string | null;
+  };
+  readonly scan: {
+    readonly ordered: boolean;
+    readonly completion: "complete" | "limit";
+  };
+  readonly progress: ScanResultProgressV2;
 }
 
 function fail(message: string): never {
@@ -888,6 +921,147 @@ export function decodeFilterResult(value: unknown): FilterResult {
   return result;
 }
 
+export function decodeScanResultV2(value: unknown): ScanResultV2 {
+  const source = record(value, "scan");
+  if (source["operation"] !== "scan-v2") {
+    fail("scan.operation must be scan-v2");
+  }
+  const columns = decodeProjectedColumns(source["columns"], "scan.columns");
+  const rows = decodeProjectedRows(source["rows"], "scan.rows", columns.length);
+  const pageValue = record(source["page"], "scan.page");
+  const scanValue = record(source["scan"], "scan.scan");
+  const progressValue = record(source["progress"], "scan.progress");
+  const completion = scanValue["completion"];
+  if (completion !== "complete" && completion !== "limit") {
+    fail("scan.scan.completion is invalid");
+  }
+  const cursorValue = pageValue["cursor"];
+  if (
+    cursorValue !== null &&
+    (typeof cursorValue !== "string" ||
+      cursorValue.length === 0 ||
+      !isCanonicalScanCursorV2(cursorValue) ||
+      new TextEncoder().encode(cursorValue).byteLength > MAX_SCAN_CURSOR_BYTES)
+  ) {
+    fail("scan.page.cursor must be null or bounded base64url");
+  }
+  const page = {
+    offsetApplied: decimal(
+      pageValue["offsetApplied"],
+      "scan.page.offsetApplied",
+      true,
+    ),
+    limit: integer(pageValue["limit"], "scan.page.limit"),
+    returned: integer(pageValue["returned"], "scan.page.returned"),
+    continuationAvailable: boolean(
+      pageValue["continuationAvailable"],
+      "scan.page.continuationAvailable",
+    ),
+    hasMoreExact: boolean(
+      pageValue["hasMoreExact"],
+      "scan.page.hasMoreExact",
+    ),
+    cursor: cursorValue,
+  };
+  if (typeof scanValue["ordered"] !== "boolean") {
+    fail("scan.scan.ordered must be boolean");
+  }
+  const progress: ScanResultProgressV2 = {
+    rowGroupsTotal: integer(
+      progressValue["rowGroupsTotal"],
+      "scan.progress.rowGroupsTotal",
+    ),
+    rowGroupsConsidered: integer(
+      progressValue["rowGroupsConsidered"],
+      "scan.progress.rowGroupsConsidered",
+    ),
+    scannedRowGroups: integer(
+      progressValue["scannedRowGroups"],
+      "scan.progress.scannedRowGroups",
+    ),
+    prunedRowGroups: integer(
+      progressValue["prunedRowGroups"],
+      "scan.progress.prunedRowGroups",
+    ),
+    rowsTotal: decimal(
+      progressValue["rowsTotal"],
+      "scan.progress.rowsTotal",
+      true,
+    ),
+    scannedRows: decimal(
+      progressValue["scannedRows"],
+      "scan.progress.scannedRows",
+      true,
+    ),
+    prunedRows: decimal(
+      progressValue["prunedRows"],
+      "scan.progress.prunedRows",
+      true,
+    ),
+    matchedRows: decimal(
+      progressValue["matchedRows"],
+      "scan.progress.matchedRows",
+      true,
+    ),
+  };
+  const result: ScanResultV2 = {
+    operation: "scan-v2",
+    columns,
+    rows,
+    page,
+    scan: {
+      ordered: scanValue["ordered"],
+      completion,
+    },
+    progress,
+  };
+  if (
+    page.limit < 1 ||
+    page.limit > MAX_SCAN_ROWS ||
+    page.returned !== rows.length ||
+    page.returned > page.limit
+  ) {
+    fail("scan page count is outside bounds or inconsistent");
+  }
+  const identities = new Set(
+    rows.map(
+      (row) => `${String(row.rowGroup)}:${row.localRow}:${row.absoluteRow}`,
+    ),
+  );
+  if (identities.size !== rows.length) {
+    fail("scan rows must have unique identities");
+  }
+  if (
+    !result.scan.ordered &&
+    rows.some(
+      (row, index) =>
+        index > 0 &&
+        BigInt(row.absoluteRow) <=
+          BigInt(rows[index - 1]?.absoluteRow ?? "0"),
+    )
+  ) {
+    fail("natural scan rows must have strictly increasing identities");
+  }
+  if (
+    progress.rowGroupsConsidered > progress.rowGroupsTotal ||
+    progress.scannedRowGroups + progress.prunedRowGroups >
+      progress.rowGroupsConsidered ||
+    BigInt(progress.scannedRows) + BigInt(progress.prunedRows) >
+      BigInt(progress.rowsTotal) ||
+    BigInt(progress.matchedRows) > BigInt(progress.scannedRows)
+  ) {
+    fail("scan progress counters are inconsistent");
+  }
+  if (
+    page.continuationAvailable !== (page.cursor !== null) ||
+    (completion === "complete" && !result.scan.ordered &&
+      page.continuationAvailable)
+  ) {
+    fail("scan completion and continuation fields are inconsistent");
+  }
+  return result;
+}
+
 export function decodeMetadataResultJson(json: string): MetadataResult {
   return decodeMetadataResult(parseJson(json, "metadata"));
 }
@@ -906,4 +1080,8 @@ export function decodeRowsResultJson(json: string): RowsResult {
 
 export function decodeFilterResultJson(json: string): FilterResult {
   return decodeFilterResult(parseJson(json, "filter"));
+}
+
+export function decodeScanResultV2Json(json: string): ScanResultV2 {
+  return decodeScanResultV2(parseJson(json, "scan"));
 }

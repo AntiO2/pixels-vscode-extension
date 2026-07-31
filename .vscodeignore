@@ -12,6 +12,8 @@ out/**
 protocol-client/**
 resources/banner.png
 resources/logo.png
+# Marketplace README media resolves through repository HTTPS URLs.
+resources/screenshots/**
 scripts/**
 tests/**
 third_party/**

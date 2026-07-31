@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -22,6 +23,7 @@ const manifestPath = path.join(
   "core",
   "core-manifest.json",
 );
+const coreOverrideDirectory = process.env["PIXELS_SCAN_WASM_DIR"];
 const workerUrl = pathToFileURL(path.join(root, "dist", "worker", "node.mjs"));
 const fixturePath = path.join(
   root,
@@ -41,6 +43,16 @@ const tpchLineitemPath = path.join(
   "data",
   "tpch-lineitem.pxl",
 );
+const multiPixelLongPath = path.join(
+  root,
+  "third_party",
+  "pixels",
+  "cpp",
+  "tests",
+  "data",
+  "multi-pixel-long.pxl",
+);
+const customerPath = path.join(root, "examples", "customer.pxl");
 
 beforeAll(async () => {
   await fs.access(workerUrl);
@@ -49,22 +61,130 @@ beforeAll(async () => {
 async function createSupervisor(
   timeout = 5_000,
 ): Promise<WorkerSupervisor> {
-  const manifest = decodeCoreManifest(
-    JSON.parse(await fs.readFile(manifestPath, "utf8")),
+  const coreDirectory =
+    coreOverrideDirectory ?? path.dirname(manifestPath);
+  const wasmPath = path.join(
+    coreDirectory,
+    "pixels-inspector-wasm.wasm",
   );
-  const coreDirectory = path.dirname(manifestPath);
+  const manifest =
+    coreOverrideDirectory === undefined
+      ? decodeCoreManifest(
+          JSON.parse(await fs.readFile(manifestPath, "utf8")),
+        )
+      : decodeCoreManifest({
+          schemaVersion: 1,
+          abiVersion: 4,
+          coreCommit: "0".repeat(40),
+          toolchain: {
+            emscripten: "6.0.5",
+            protobuf: "3.21.6",
+          },
+          capabilities: ["scan-v2"],
+          artifacts: {
+            "pixels-inspector-wasm.wasm": {
+              bytes: (await fs.stat(wasmPath)).size,
+              sha256: createHash("sha256")
+                .update(await fs.readFile(wasmPath))
+                .digest("hex"),
+            },
+          },
+        });
   return new WorkerSupervisor(
     new NodeWorkerFactory(workerUrl),
     manifest,
     {
       loaderUrl: path.join(coreDirectory, "pixels-inspector-wasm.cjs"),
-      wasmUrl: path.join(coreDirectory, "pixels-inspector-wasm.wasm"),
+      wasmUrl: wasmPath,
     },
     timeout,
   );
 }
 
 describe("Node parser worker integration", () => {
+  it("round-trips the release customer example", async () => {
+    const source = await NodeFileRangeSource.open(customerPath);
+    const supervisor = await createSupervisor();
+    try {
+      const metadata = await supervisor.inspectMetadata(source);
+      expect(metadata).toMatchObject({
+        rows: 75,
+        pixelStride: 5,
+        schemaCount: 8,
+        rowGroupCount: 3,
+      });
+      expect(metadata.schema.map((column) => [column.name, column.kind])).toEqual([
+        ["c_custkey", 4],
+        ["c_name", 16],
+        ["c_address", 16],
+        ["c_nationkey", 4],
+        ["c_phone", 17],
+        ["c_acctbal", 14],
+        ["c_mktsegment", 17],
+        ["c_comment", 16],
+      ]);
+      for (let rowGroup = 0; rowGroup < 3; rowGroup += 1) {
+        const layout = await supervisor.inspectRowGroup(source, rowGroup);
+        expect(layout.columns).toHaveLength(8);
+        expect(layout.columns.every(
+          (column) => column.chunk.pixels.length >= 5,
+        )).toBe(true);
+      }
+      const rows = await supervisor.inspectRows(source, {
+        rowGroup: 0,
+        columns: [0, 1, 3, 5, 6],
+        rowOffset: 0n,
+        rowCount: 25,
+      });
+      expect(rows.count).toBe(25);
+      expect(rows.rows[0]?.values).toEqual([
+        "1001", "Customer#1001", "3", "-2470.50", "AUTOMOBILE",
+      ]);
+    } finally {
+      await supervisor.dispose();
+      await source.close();
+    }
+  });
+
+  it("round-trips the generated three-Pixel LONG fixture", async () => {
+    const source = await NodeFileRangeSource.open(multiPixelLongPath);
+    const supervisor = await createSupervisor();
+    try {
+      const metadata = await supervisor.inspectMetadata(source);
+      expect(metadata).toMatchObject({
+        rows: 10,
+        pixelStride: 4,
+        rowGroupCount: 1,
+      });
+      expect(metadata.schema).toHaveLength(1);
+      expect(metadata.schema[0]).toMatchObject({ name: "id", kind: 4 });
+      const layout = await supervisor.inspectRowGroup(source, 0);
+      expect(layout.columns).toHaveLength(1);
+      expect(layout.columns[0]?.chunk.pixels.map((pixel) => ({
+        position: pixel.position,
+        numberOfValues: pixel.statistics?.numberOfValues,
+      }))).toEqual([
+        { position: 0, numberOfValues: "4" },
+        { position: 32, numberOfValues: "4" },
+        { position: 64, numberOfValues: "2" },
+      ]);
+      await expect(
+        supervisor.inspectPage(source, {
+          rowGroup: 0,
+          column: 0,
+          rowOffset: 0n,
+          rowCount: 10,
+        }),
+      ).resolves.toMatchObject({
+        count: 10,
+        values: ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"],
+      });
+    } finally {
+      await supervisor.dispose();
+      await source.close();
+    }
+  });
+
   it("reads the representative 16-column TPC-H lineitem path", async () => {
     const source = await NodeFileRangeSource.open(tpchLineitemPath);
     const supervisor = await createSupervisor();

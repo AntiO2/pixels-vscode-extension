@@ -11,6 +11,7 @@ import type {
   ControllerMessage,
   ErrorMessage,
   InitializeMessage,
+  ScanProgressV2,
   WorkerMessage,
 } from "@pixels-inspector/protocol-client";
 
@@ -40,7 +41,14 @@ type WorkerState =
 
 interface ActiveOperation {
   readonly requestId: string;
-  readonly operation: "metadata" | "rowGroup" | "page" | "rows" | "filter";
+  readonly operation:
+    | "metadata"
+    | "rowGroup"
+    | "page"
+    | "rows"
+    | "filter"
+    | "scan";
+  lastProgress?: ScanProgressV2;
 }
 
 async function sha256(bytes: Uint8Array): Promise<string> {
@@ -103,6 +111,9 @@ export class InspectorWorkerCore {
         return;
       case "inspectFilter":
         this.inspectFilter(message);
+        return;
+      case "inspectScan":
+        this.inspectScan(message);
         return;
       case "inspectRowGroup":
         this.inspectRowGroup(message);
@@ -252,6 +263,19 @@ export class InspectorWorkerCore {
     );
   }
 
+  private inspectScan(
+    message: Extract<ControllerMessage, { kind: "inspectScan" }>,
+  ): void {
+    this.requireResultState();
+    this.active = {
+      requestId: message.requestId,
+      operation: "scan",
+    };
+    const step = this.requireClient().beginScan(message.plan);
+    this.emitScanProgress();
+    this.emitStep(step);
+  }
+
   private supplyRange(
     requestId: string,
     offset: string,
@@ -264,12 +288,35 @@ export class InspectorWorkerCore {
         "supplied range belongs to a different request",
       );
     }
-    this.emitStep(
-      this.requireClient().supplyRange(
-        parseUnsignedDecimal(offset, "offset"),
-        new Uint8Array(bytes),
-      ),
+    const step = this.requireClient().supplyRange(
+      parseUnsignedDecimal(offset, "offset"),
+      new Uint8Array(bytes),
     );
+    if (this.active.operation === "scan") {
+      this.emitScanProgress();
+    }
+    this.emitStep(step);
+  }
+
+  private emitScanProgress(): void {
+    const active = this.active;
+    if (active?.operation !== "scan") {
+      return;
+    }
+    const progress = this.requireClient().readScanProgress();
+    if (
+      active.lastProgress !== undefined &&
+      JSON.stringify(active.lastProgress) === JSON.stringify(progress)
+    ) {
+      return;
+    }
+    active.lastProgress = progress;
+    this.port.post({
+      kind: "progress",
+      requestId: active.requestId,
+      operation: "scan",
+      progress,
+    });
   }
 
   private cancel(requestId: string): void {

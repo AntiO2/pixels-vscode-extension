@@ -1,12 +1,16 @@
 import {
   CORE_ABI_VERSION,
   InspectorError,
+  SCAN_PROGRESS_BYTES,
   decodeCoreCapabilities,
+  encodeScanPlanV2,
   toSafeLength,
 } from "@pixels-inspector/protocol-client";
 import type {
   CoreCapabilities,
   FilterOperator,
+  ScanPlanV2,
+  ScanProgressV2,
 } from "@pixels-inspector/protocol-client";
 
 import type { EmscriptenInspectorModule } from "./wasm-types.js";
@@ -69,7 +73,7 @@ export class WasmInspectorClient {
         `Core ABI ${String(module._pixels_inspector_abi_version())} does not match ${String(CORE_ABI_VERSION)}`,
       );
     }
-    this.scratchPointer = module._malloc(16);
+    this.scratchPointer = module._malloc(SCAN_PROGRESS_BYTES);
     if (this.scratchPointer === 0) {
       throw new InspectorError("CORE_ERROR", "unable to allocate ABI scratch memory");
     }
@@ -178,6 +182,63 @@ export class WasmInspectorClient {
         ),
       ),
     );
+  }
+
+  public beginScan(plan: ScanPlanV2): WasmStep {
+    this.requireSession();
+    const packet = encodeScanPlanV2(plan);
+    return this.withBytes(packet, (planPointer) =>
+      this.step(
+        this.module._pixels_inspector_begin_scan(
+          this.handle,
+          planPointer,
+          packet.byteLength,
+        ),
+      ),
+    );
+  }
+
+  public readScanProgress(): ScanProgressV2 {
+    this.requireSession();
+    this.requireStatus(
+      this.module._pixels_inspector_copy_scan_progress(
+        this.handle,
+        this.scratchPointer,
+        SCAN_PROGRESS_BYTES,
+      ),
+      STATUS_OK,
+      "copy scan progress",
+    );
+    const view = this.dataView(SCAN_PROGRESS_BYTES);
+    const version = view.getUint32(0, true);
+    const phaseCode = view.getUint32(4, true);
+    const phases = [
+      "validating",
+      "scanning",
+      "projecting",
+      "complete",
+    ] as const;
+    const phase = phases[phaseCode];
+    if (version !== 1 || phase === undefined) {
+      throw new InspectorError(
+        "CORE_ERROR",
+        "Core returned an unsupported scan progress snapshot",
+      );
+    }
+    const current = view.getUint32(24, true);
+    return {
+      phase,
+      rowGroupsTotal: view.getUint32(8, true),
+      rowGroupsConsidered: view.getUint32(12, true),
+      scannedRowGroups: view.getUint32(16, true),
+      prunedRowGroups: view.getUint32(20, true),
+      currentRowGroup: current === 0xffff_ffff ? null : current,
+      retainedCandidates: view.getUint32(28, true),
+      rowsTotal: view.getBigUint64(32, true).toString(),
+      scannedRows: view.getBigUint64(40, true).toString(),
+      prunedRows: view.getBigUint64(48, true).toString(),
+      matchedRows: view.getBigUint64(56, true).toString(),
+    };
   }
 
   public supplyRange(offset: bigint, bytes: Uint8Array): WasmStep {
@@ -410,10 +471,17 @@ export class WasmInspectorClient {
   private coreError(status: number): InspectorError {
     const statusName = STATUS_NAMES[status] ?? `STATUS_${String(status)}`;
     const detail = this.readError();
+    const invalidCursor =
+      status === 100 &&
+      detail?.toLowerCase().includes("scan cursor") === true;
     return new InspectorError(
-      status === STATUS_CANCELLED ? "CANCELLED" : "CORE_ERROR",
+      status === STATUS_CANCELLED
+        ? "CANCELLED"
+        : invalidCursor
+          ? "INVALID_CURSOR"
+          : "CORE_ERROR",
       detail === undefined ? statusName : `${statusName}: ${detail}`,
-      status === STATUS_CANCELLED,
+      status === STATUS_CANCELLED || invalidCursor,
     );
   }
 

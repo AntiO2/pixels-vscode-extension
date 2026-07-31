@@ -4,6 +4,16 @@ import path from "node:path";
 
 import { repositoryRoot } from "./lib/core-config.mjs";
 
+const manifest = JSON.parse(
+  await fs.readFile(path.join(repositoryRoot, "package.json"), "utf8"),
+);
+if (
+  typeof manifest.version !== "string" ||
+  !/^\d+\.\d+\.\d+$/u.test(manifest.version)
+) {
+  throw new Error("package.json version must use major.minor.patch");
+}
+
 const targets = new Set([
   "darwin-arm64",
   "darwin-x64",
@@ -24,7 +34,7 @@ const outputDirectory = path.join(repositoryRoot, "out", "vsix");
 await fs.mkdir(outputDirectory, { recursive: true });
 const output = path.join(
   outputDirectory,
-  `pixels-pxl-inspector-${target}-0.1.0.vsix`,
+  `pixels-pxl-inspector-${target}-${manifest.version}.vsix`,
 );
 const executable = path.join(
   repositoryRoot,
@@ -39,7 +49,6 @@ await new Promise((resolve, reject) => {
     [
       "package",
       "--no-dependencies",
-      "--allow-missing-repository",
       "--target",
       target,
       "--out",

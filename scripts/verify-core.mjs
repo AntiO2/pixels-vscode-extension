@@ -128,9 +128,16 @@ try {
       capabilities.abi === coreAbi &&
         capabilities.rows === "rows-v1" &&
         capabilities.filter === "filter-v1" &&
+        capabilities.scan === "scan-v2" &&
         capabilities.defaultRows === 100 &&
-        capabilities.maxRows === 500,
-      "staged Core row/filter capabilities are incomplete",
+        capabilities.maxRows === 500 &&
+        capabilities.defaultScanRows === 20 &&
+        capabilities.maxScanRows === 500 &&
+        capabilities.maxProjectionColumns === 128 &&
+        capabilities.maxExpressionNodes === 64 &&
+        capabilities.maxOrderKeys === 8 &&
+        capabilities.maxOrderedWindowRows === 4096,
+      "staged Core row/filter/scan capabilities are incomplete",
     );
     requireCondition(
       capabilities.compression?.payload === "inactive" &&

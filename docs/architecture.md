@@ -52,12 +52,7 @@ Direct S3, HDFS, HTTP, and object-store providers are intentionally deferred.
 
 ## Custom editor
 
-The extension host owns the read-only custom document, source lifetime, parser
-worker, cancellation, and refresh. The webview receives only validated,
-structured-clone-safe models and renders Overview, Schema, Row Groups, Data
-Preview, and Physical Layout. File content never becomes HTML, a command, a
-script URL, or a WASM URL; all content is inserted through DOM text nodes under
-a restrictive content-security policy.
+The extension host owns the read-only custom document, source lifetime, parser worker, cancellation, and refresh. The webview receives only validated, structured-clone-safe models and renders Analyze, Data, and Query workspaces. File content never becomes HTML, a command, a script URL, or a WASM URL; all content is inserted through DOM text nodes under a restrictive content-security policy.
 
 ## Failure model
 

@@ -13,13 +13,14 @@ vi.mock("vscode", () => ({}));
 import {
   decodeFilterSelection,
   decodeRowsSelection,
+  decodeScanSelection,
 } from "../../extension/src/custom-editor.js";
 import {
   EXPECTED_METADATA,
 } from "../fixtures/expected.js";
 
 const metadata = decodeMetadataResultJson(
-  EXPECTED_METADATA.replace('"abi":2', '"abi":3'),
+  EXPECTED_METADATA.replace(/"abi":\d+/u, '"abi":4'),
 );
 
 describe("custom editor row and filter request boundary", () => {
@@ -118,5 +119,84 @@ describe("custom editor row and filter request boundary", () => {
         metadata,
       ),
     ).toThrow(/incompatible/u);
+  });
+
+  it("validates bounded composite scan plans against root schema columns", () => {
+    expect(
+      decodeScanSelection(
+        {
+          plan: {
+            projection: { kind: "columns", columns: [1, 0] },
+            predicate: {
+              kind: "and",
+              children: [
+                {
+                  kind: "predicate",
+                  column: 0,
+                  operator: "ge",
+                  literal: "3",
+                },
+                {
+                  kind: "predicate",
+                  column: 1,
+                  operator: "contains",
+                  literal: "li",
+                },
+              ],
+            },
+            orderBy: [
+              { column: 1, direction: "asc", nulls: "last" },
+              { column: 0, direction: "desc", nulls: "first" },
+            ],
+            offset: "0",
+            limit: 20,
+          },
+        },
+        metadata,
+      ),
+    ).toMatchObject({
+      plan: {
+        projection: { kind: "columns", columns: [1, 0] },
+        limit: 20,
+      },
+    });
+    expect(() =>
+      decodeScanSelection(
+        {
+          plan: {
+            projection: { kind: "all" },
+            predicate: {
+              kind: "predicate",
+              column: 99,
+              operator: "eq",
+              literal: "nested",
+            },
+            orderBy: [],
+            offset: "0",
+            limit: 20,
+          },
+        },
+        metadata,
+      ),
+    ).toThrow(/root scalar schema/u);
+
+    const childColumns = new Set(metadata.schema.flatMap((type) => type.subtypes));
+    const reversedRoots = metadata.schema
+      .filter((type) => !childColumns.has(type.id))
+      .map((type) => type.id)
+      .reverse();
+    expect(
+      decodeScanSelection(
+        {
+          plan: {
+            projection: { kind: "columns", columns: reversedRoots },
+            orderBy: [],
+            offset: "0",
+            limit: 20,
+          },
+        },
+        metadata,
+      ).plan.projection,
+    ).toEqual({ kind: "columns", columns: reversedRoots });
   });
 });

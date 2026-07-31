@@ -5,6 +5,8 @@ import {
   decodePageResult,
   decodeRowGroupResult,
   decodeRowsResult,
+  decodeScanProgressV2,
+  decodeScanResultV2,
 } from "@pixels-inspector/protocol-client";
 
 import type {
@@ -44,6 +46,18 @@ function revisionOf(source: Record<string, unknown>): number {
     throw new Error("revision must be a non-negative safe integer");
   }
   return revision;
+}
+
+function elapsedOf(source: Record<string, unknown>): number {
+  const elapsedMs = source["elapsedMs"];
+  if (
+    typeof elapsedMs !== "number" ||
+    !Number.isSafeInteger(elapsedMs) ||
+    elapsedMs < 0
+  ) {
+    throw new Error("elapsedMs must be a non-negative safe integer");
+  }
+  return elapsedMs;
 }
 
 function decodeSource(value: unknown): SourceSummary {
@@ -136,6 +150,22 @@ export function decodeHostMessage(value: unknown): HostMessage | undefined {
         revision,
         filter: decodeFilterResult(value["filter"]),
       };
+    case "scanProgress":
+      return {
+        kind: "scanProgress",
+        revision,
+        progress: decodeScanProgressV2(value["progress"]),
+        elapsedMs: elapsedOf(value),
+      };
+    case "scan":
+      return {
+        kind: "scan",
+        revision,
+        scan: decodeScanResultV2(value["scan"]),
+        elapsedMs: elapsedOf(value),
+      };
+    case "scanCancelled":
+      return { kind: "scanCancelled", revision };
     case "empty":
       return { kind: "empty", revision };
     case "error":

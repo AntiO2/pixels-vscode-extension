@@ -4,13 +4,20 @@ import { WasmInspectorClient } from "../../worker/src/wasm-client.js";
 import type { EmscriptenInspectorModule } from "../../worker/src/wasm-types.js";
 
 const capabilities = JSON.stringify({
-  abi: 3,
+  abi: 4,
   page: "generic-v1",
   rowGroup: "layout-v1",
   rows: "rows-v1",
   filter: "filter-v1",
+  scan: "scan-v2",
   maxRows: 500,
   defaultRows: 100,
+  defaultScanRows: 20,
+  maxScanRows: 500,
+  maxProjectionColumns: 128,
+  maxExpressionNodes: 64,
+  maxOrderKeys: 8,
+  maxOrderedWindowRows: 4096,
   types: [
     "BOOLEAN", "BYTE", "SHORT", "INT", "LONG", "FLOAT", "DOUBLE",
     "STRING", "BINARY", "TIMESTAMP", "ARRAY", "MAP", "STRUCT",
@@ -32,15 +39,26 @@ interface FilterCall {
   readonly cursor: Uint8Array;
 }
 
-function createModule(filterStatus = 1): {
+interface ScanCall {
+  readonly packet: Uint8Array;
+}
+
+function createModule(
+  filterStatus = 1,
+  scanStatus = 1,
+  errorMessage = "",
+): {
   readonly module: EmscriptenInspectorModule;
   readonly freed: number[];
   readonly filterCalls: FilterCall[];
+  readonly scanCalls: ScanCall[];
 } {
   const heap = new Uint8Array(65_536);
   const freed: number[] = [];
   const filterCalls: FilterCall[] = [];
+  const scanCalls: ScanCall[] = [];
   const capabilityBytes = new TextEncoder().encode(capabilities);
+  const errorBytes = new TextEncoder().encode(errorMessage);
   let nextPointer = 32;
 
   const module: EmscriptenInspectorModule = {
@@ -58,7 +76,7 @@ function createModule(filterStatus = 1): {
         freed.push(pointer);
       }
     },
-    _pixels_inspector_abi_version: () => 3,
+    _pixels_inspector_abi_version: () => 4,
     _pixels_inspector_capabilities_size(sizePointer) {
       new DataView(heap.buffer).setBigUint64(
         sizePointer,
@@ -102,6 +120,33 @@ function createModule(filterStatus = 1): {
       });
       return filterStatus;
     },
+    _pixels_inspector_begin_scan(_handle, planPointer, planSize) {
+      scanCalls.push({
+        packet: heap.slice(planPointer, planPointer + planSize),
+      });
+      return scanStatus;
+    },
+    _pixels_inspector_copy_scan_progress(
+      _handle,
+      destination,
+      destinationSize,
+    ) {
+      expect(destinationSize).toBe(64);
+      const view = new DataView(heap.buffer, destination, 64);
+      view.setUint32(0, 1, true);
+      view.setUint32(4, 1, true);
+      view.setUint32(8, 3, true);
+      view.setUint32(12, 2, true);
+      view.setUint32(16, 1, true);
+      view.setUint32(20, 1, true);
+      view.setUint32(24, 2, true);
+      view.setUint32(28, 20, true);
+      view.setBigUint64(32, 100n, true);
+      view.setBigUint64(40, 40n, true);
+      view.setBigUint64(48, 20n, true);
+      view.setBigUint64(56, 12n, true);
+      return 0;
+    },
     _pixels_inspector_next_range(_handle, offsetPointer, lengthPointer) {
       const view = new DataView(heap.buffer);
       view.setBigUint64(offsetPointer, 8n, true);
@@ -112,16 +157,23 @@ function createModule(filterStatus = 1): {
     _pixels_inspector_result_size: () => 0,
     _pixels_inspector_copy_result: () => 0,
     _pixels_inspector_error_size(_handle, sizePointer) {
-      new DataView(heap.buffer).setBigUint64(sizePointer, 0n, true);
+      new DataView(heap.buffer).setBigUint64(
+        sizePointer,
+        BigInt(errorBytes.byteLength),
+        true,
+      );
       return 0;
     },
-    _pixels_inspector_copy_error: () => 0,
+    _pixels_inspector_copy_error(_handle, destination) {
+      heap.set(errorBytes, destination);
+      return 0;
+    },
     _pixels_inspector_cancel: () => 108,
   };
-  return { module, freed, filterCalls };
+  return { module, freed, filterCalls, scanCalls };
 }
 
-describe("WASM ABI 3 client", () => {
+describe("WASM ABI 4 client", () => {
   it("maps filter operators and frees every temporary ABI allocation", () => {
     const fixture = createModule();
     const client = new WasmInspectorClient(fixture.module);
@@ -147,6 +199,89 @@ describe("WASM ABI 3 client", () => {
       },
     ]);
     expect(fixture.freed).toHaveLength(freedBeforeFilter + 3);
+    client.dispose();
+  });
+
+  it("copies a canonical scan packet and decodes the 64-byte progress ABI", () => {
+    const fixture = createModule();
+    const client = new WasmInspectorClient(fixture.module);
+    client.beginMetadata(128n);
+    const freedBeforeScan = fixture.freed.length;
+
+    expect(
+      client.beginScan({
+        projection: { kind: "columns", columns: [4, 2] },
+        predicate: {
+          kind: "predicate",
+          column: 4,
+          operator: "ge",
+          literal: "7",
+        },
+        orderBy: [
+          { column: 4, direction: "desc", nulls: "last" },
+        ],
+        offset: "3",
+        limit: 20,
+      }),
+    ).toEqual({ kind: "range", offset: 8n, length: 4n });
+    expect(fixture.scanCalls[0]?.packet.slice(0, 4)).toEqual(
+      new Uint8Array([0x50, 0x58, 0x53, 0x56]),
+    );
+    expect(fixture.freed).toHaveLength(freedBeforeScan + 1);
+    expect(client.readScanProgress()).toEqual({
+      phase: "scanning",
+      rowGroupsTotal: 3,
+      rowGroupsConsidered: 2,
+      scannedRowGroups: 1,
+      prunedRowGroups: 1,
+      currentRowGroup: 2,
+      retainedCandidates: 20,
+      rowsTotal: "100",
+      scannedRows: "40",
+      prunedRows: "20",
+      matchedRows: "12",
+    });
+    client.dispose();
+  });
+
+  it("frees the scan packet allocation when Core rejects the plan", () => {
+    const fixture = createModule(1, 100);
+    const client = new WasmInspectorClient(fixture.module);
+    client.beginMetadata(128n);
+    const freedBeforeScan = fixture.freed.length;
+    expect(() =>
+      client.beginScan({
+        projection: { kind: "all" },
+        orderBy: [],
+        offset: "0",
+        limit: 20,
+      }),
+    ).toThrow("INVALID_ARGUMENT");
+    expect(fixture.freed).toHaveLength(freedBeforeScan + 1);
+    client.dispose();
+  });
+
+  it("promotes Core scan cursor failures to the stable protocol error", () => {
+    const fixture = createModule(
+      1,
+      100,
+      "scan cursor does not match the plan or source",
+    );
+    const client = new WasmInspectorClient(fixture.module);
+    client.beginMetadata(128n);
+    expect(() =>
+      client.beginScan({
+        projection: { kind: "all" },
+        orderBy: [],
+        offset: "0",
+        limit: 20,
+      }),
+    ).toThrow(
+      expect.objectContaining({
+        code: "INVALID_CURSOR",
+        recoverable: true,
+      }),
+    );
     client.dispose();
   });
 

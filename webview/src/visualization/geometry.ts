@@ -46,10 +46,22 @@ export function deriveRowGroupBands(
 
 export function pixelTickPosition(
   position: number,
-  rowCount: number,
+  chunkLength: number,
 ): number {
-  if (rowCount <= 0) {
+  if (chunkLength <= 0) {
     return 0;
   }
-  return Math.min(1, Math.max(0, position / rowCount));
+  return Math.min(1, Math.max(0, position / chunkLength));
+}
+
+export function pixelLabelStride(
+  pixelCount: number,
+  availableWidth: number,
+  minimumGap = 36,
+): number {
+  if (pixelCount <= 1 || availableWidth <= 0) {
+    return 1;
+  }
+  const labelCapacity = Math.max(1, Math.floor(availableWidth / minimumGap));
+  return Math.max(1, Math.ceil(pixelCount / labelCapacity));
 }

@@ -1,0 +1,380 @@
+.vscode-high-contrast .segmented button[aria-checked="true"],
+.vscode-high-contrast-light .segmented button[aria-checked="true"] {
+  color: var(--px-accent-text);
+  background: var(--px-accent-fill);
+  border-color: currentColor;
+  box-shadow: none;
+}
+
+.vscode-high-contrast .mode-switch button.is-current,
+.vscode-high-contrast-light .mode-switch button.is-current {
+  color: var(--px-accent-text);
+  background: var(--px-accent-fill);
+  border-color: currentColor;
+}
+
+.vscode-high-contrast .file-map rect,
+.vscode-high-contrast-light .file-map rect {
+  fill: var(--px-map-fill);
+}
+
+.vscode-high-contrast .file-map g[aria-pressed="true"] rect,
+.vscode-high-contrast-light .file-map g[aria-pressed="true"] rect {
+  fill: var(--px-map-selected);
+}
+
+.vscode-high-contrast .schema-entry-type,
+.vscode-high-contrast-light .schema-entry-type,
+.vscode-high-contrast .summary-strip dd,
+.vscode-high-contrast-light .summary-strip dd,
+.vscode-high-contrast .chunk-kind,
+.vscode-high-contrast-light .chunk-kind,
+.vscode-high-contrast .chunk-encoding,
+.vscode-high-contrast-light .chunk-encoding,
+.vscode-high-contrast .chunk-measure,
+.vscode-high-contrast-light .chunk-measure,
+.vscode-high-contrast .data-table .value,
+.vscode-high-contrast-light .data-table .value,
+.vscode-high-contrast .query-progress,
+.vscode-high-contrast-light .query-progress,
+.vscode-high-contrast .property dt,
+.vscode-high-contrast-light .property dt,
+.vscode-high-contrast .property dd,
+.vscode-high-contrast-light .property dd,
+.vscode-high-contrast .inspector-note h3,
+.vscode-high-contrast-light .inspector-note h3 {
+  color: currentColor;
+}
+
+@media (forced-colors: active) {
+  .mode-switch,
+  .segmented,
+  .action-button,
+  .entity,
+  input,
+  select {
+    border-color: currentColor;
+    forced-color-adjust: auto;
+  }
+
+  .segmented button[aria-checked="true"] {
+    color: HighlightText;
+    background: Highlight;
+    border-color: currentColor;
+    box-shadow: none;
+  }
+}
+
+.empty-state {
+  min-height: 92px;
+  padding: 25px;
+  color: var(--px-text-secondary);
+  text-align: center;
+  border: 1px dashed var(--px-border-strong);
+}
+
+.drawer-scrim,
+.mobile-only {
+  display: none;
+}
+
+.vscode-high-contrast .drawer-scrim,
+.vscode-high-contrast-light .drawer-scrim {
+  opacity: 1;
+}
+
+@media (max-width: 1180px) {
+  .instrument-header {
+    grid-template-columns: minmax(160px, 1fr) auto minmax(150px, 1fr);
+    gap: 10px;
+  }
+
+  .summary-strip .properties {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1179px) {
+  .mobile-only {
+    display: inline-flex;
+  }
+
+  .workspace-shell {
+    display: block;
+  }
+
+  .context-rail,
+  .inspector-panel {
+    position: fixed;
+    z-index: 80;
+    top: 0;
+    bottom: 0;
+    width: min(320px, 88vw);
+    height: 100vh;
+    box-shadow: var(--px-shadow);
+    opacity: 0;
+    transition:
+      transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+      opacity 140ms ease-out;
+    will-change: transform, opacity;
+  }
+
+  .context-rail {
+    left: 0;
+    transform: translateX(-102%) scale(0.985);
+    transform-origin: left center;
+  }
+
+  .inspector-panel {
+    right: 0;
+    transform: translateX(102%) scale(0.985);
+    transform-origin: right center;
+  }
+
+  .context-rail.is-open,
+  .inspector-panel.is-open {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+
+  .drawer-scrim {
+    position: fixed;
+    z-index: 75;
+    inset: 0;
+    display: block;
+    padding: 0;
+    background: var(--px-canvas);
+    opacity: 0.68;
+    border: 0;
+    animation: scrim-in 140ms ease-out both;
+  }
+
+  .instrument-header,
+  .context-rail,
+  .inspector-panel {
+    top: 0;
+  }
+
+  .query-builder form {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .query-builder form .action-button {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+}
+
+@keyframes scrim-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (max-width: 1000px) {
+  .instrument-header {
+    grid-template-columns: minmax(180px, 1fr) auto;
+  }
+
+  .mode-switch {
+    grid-row: 2;
+    grid-column: 1 / -1;
+    justify-self: center;
+  }
+}
+
+@media (max-width: 700px) {
+  .instrument-header {
+    gap: 8px;
+    padding: 7px 9px;
+  }
+
+  .header-actions .action-button span:last-child {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+
+  .mode-switch {
+    width: 100%;
+  }
+
+  .mode-switch button {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .breadcrumb {
+    padding-inline: 9px;
+  }
+
+  .analyze-workspace {
+    padding-inline: 10px;
+  }
+
+  .summary-strip {
+    margin-inline: -10px;
+    padding-inline: 10px;
+  }
+
+  .summary-strip .properties {
+    grid-template-columns: 1fr;
+  }
+
+  .section-heading {
+    display: grid;
+  }
+
+  .source-badge {
+    justify-self: start;
+  }
+
+  .query-builder,
+  .query-results {
+    padding: 12px;
+  }
+
+  .query-builder form {
+    grid-template-columns: 1fr;
+  }
+
+  .query-builder form .action-button {
+    grid-column: auto;
+  }
+
+  .query-progress {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .instrument-header {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .identity {
+    gap: 7px;
+  }
+
+  .identity p {
+    display: none;
+  }
+
+  .mode-switch button {
+    min-height: 34px;
+    padding-inline: 7px;
+  }
+
+  .breadcrumb {
+    min-height: 30px;
+  }
+
+  .data-toolbar {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: end;
+    padding: 8px;
+    overflow: visible;
+  }
+
+  .data-toolbar .segmented,
+  .data-toolbar .paging-controls {
+    grid-column: 1 / -1;
+  }
+
+  .data-toolbar .segmented {
+    width: 100%;
+  }
+
+  .data-toolbar label {
+    min-width: 0;
+  }
+
+  .data-toolbar label select {
+    width: 100%;
+  }
+
+  .data-toolbar .timestamp-control {
+    display: none;
+  }
+
+  .toolbar-spacer {
+    display: none;
+  }
+
+  .paging-controls {
+    max-width: 100%;
+    justify-content: space-between;
+    overflow-x: auto;
+  }
+
+  .paging-controls .numeric {
+    white-space: nowrap;
+  }
+
+  .paging-controls .action-button {
+    flex: none;
+    width: 34px;
+    padding-inline: 4px;
+  }
+
+  .paging-controls .action-button span:last-child {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+
+  .projection-editor {
+    margin-inline: 8px;
+  }
+
+  .capability-note {
+    margin-inline: 8px;
+  }
+
+  .result-actions,
+  .result-summary {
+    padding-inline: 8px;
+  }
+
+  .context-rail,
+  .inspector-panel {
+    width: min(280px, 82vw);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .context-rail,
+  .inspector-panel {
+    transform: none !important;
+    transition-property: opacity;
+  }
+
+  .context-rail:not(.is-open),
+  .inspector-panel:not(.is-open) {
+    visibility: hidden;
+  }
+
+  .drawer-scrim {
+    animation: none;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .drawer-scrim {
+    opacity: 0.84;
+  }
+}
