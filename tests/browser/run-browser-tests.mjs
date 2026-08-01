@@ -1716,6 +1716,159 @@ try {
   ) {
     throw new Error("Query Output columns rendered a nested disclosure");
   }
+  await embeddedQueryColumns
+    .getByRole("button", { name: "Clear", exact: true })
+    .click();
+  const queryOrderkeyItem = embeddedQueryColumns
+    .locator(".projection-item")
+    .first();
+  const queryOrderkeyName = queryOrderkeyItem.locator(
+    ".projection-column-name",
+  );
+  const queryShortName = embeddedQueryColumns.locator(
+    ".projection-column-name",
+    { hasText: /^l_tax$/u },
+  );
+  if ((await queryShortName.getAttribute("class"))?.includes("is-truncated")) {
+    throw new Error("short Query column name was incorrectly marked truncated");
+  }
+  await queryShortName.hover();
+  await webview.waitForTimeout(120);
+  if (await webview.getByRole("tooltip").count() !== 0) {
+    throw new Error("short Query column name exposed a full-name tooltip");
+  }
+  await queryOrderkeyName.evaluate((element) => {
+    element.style.width = "42px";
+  });
+  await webview.waitForFunction((element) =>
+    element.classList.contains("is-truncated"),
+  await queryOrderkeyName.elementHandle());
+  const queryNameBounds = await queryOrderkeyName.boundingBox();
+  if (queryNameBounds === null) {
+    throw new Error("truncated Query column name has no geometry");
+  }
+  const pointerStart = {
+    x: queryNameBounds.x + 5,
+    y: queryNameBounds.y + 5,
+  };
+  await webview.mouse.move(pointerStart.x, pointerStart.y);
+  const queryNameTooltip = webview.getByRole("tooltip");
+  await queryNameTooltip.waitFor({ state: "visible" });
+  if (
+    (await queryNameTooltip.innerText()) !== "l_orderkey" ||
+    (await queryNameTooltip.getAttribute("data-origin")) !== "pointer"
+  ) {
+    throw new Error("truncated Query column hover did not reveal its full name");
+  }
+  const pointerPlacement = await queryNameTooltip.evaluate((element, point) => {
+    const bounds = element.getBoundingClientRect();
+    return {
+      left: bounds.left,
+      top: bounds.top,
+      right: bounds.right,
+      bottom: bounds.bottom,
+      viewportWidth: globalThis.document.documentElement.clientWidth,
+      viewportHeight: globalThis.document.documentElement.clientHeight,
+      coversPointer:
+        point.x >= bounds.left && point.x <= bounds.right &&
+        point.y >= bounds.top && point.y <= bounds.bottom,
+    };
+  }, pointerStart);
+  if (
+    pointerPlacement.coversPointer ||
+    pointerPlacement.left < 0 ||
+    pointerPlacement.top < 0 ||
+    pointerPlacement.right > pointerPlacement.viewportWidth ||
+    pointerPlacement.bottom > pointerPlacement.viewportHeight
+  ) {
+    throw new Error(
+      `Query pointer tooltip placement is invalid: ${JSON.stringify(pointerPlacement)}`,
+    );
+  }
+  const pointerMoved = {
+    x: queryNameBounds.x + queryNameBounds.width - 3,
+    y: queryNameBounds.y + queryNameBounds.height - 3,
+  };
+  await webview.mouse.move(pointerMoved.x, pointerMoved.y);
+  await webview.waitForFunction((previousLeft) => {
+    const tooltip = globalThis.document.querySelector("[role='tooltip']");
+    return tooltip !== null &&
+      Math.abs(tooltip.getBoundingClientRect().left - previousLeft) > 4;
+  }, pointerPlacement.left);
+  const edgePointer = await webview.evaluate(() => ({
+    x: globalThis.document.documentElement.clientWidth - 3,
+    y: globalThis.document.documentElement.clientHeight - 3,
+  }));
+  await queryOrderkeyName.dispatchEvent("pointermove", {
+    bubbles: true,
+    clientX: edgePointer.x,
+    clientY: edgePointer.y,
+    pointerType: "mouse",
+  });
+  await webview.waitForTimeout(30);
+  const edgeTooltipPlacement = await queryNameTooltip.evaluate(
+    (element, point) => {
+      const bounds = element.getBoundingClientRect();
+      return {
+        left: bounds.left,
+        top: bounds.top,
+        right: bounds.right,
+        bottom: bounds.bottom,
+        viewportWidth: globalThis.document.documentElement.clientWidth,
+        viewportHeight: globalThis.document.documentElement.clientHeight,
+        flippedLeft: bounds.right < point.x,
+        flippedAbove: bounds.bottom < point.y,
+        coversPointer:
+          point.x >= bounds.left && point.x <= bounds.right &&
+          point.y >= bounds.top && point.y <= bounds.bottom,
+      };
+    },
+    edgePointer,
+  );
+  if (
+    !edgeTooltipPlacement.flippedLeft ||
+    !edgeTooltipPlacement.flippedAbove ||
+    edgeTooltipPlacement.coversPointer ||
+    edgeTooltipPlacement.left < 0 ||
+    edgeTooltipPlacement.top < 0 ||
+    edgeTooltipPlacement.right > edgeTooltipPlacement.viewportWidth ||
+    edgeTooltipPlacement.bottom > edgeTooltipPlacement.viewportHeight
+  ) {
+    throw new Error(
+      `Query edge tooltip did not flip/clamp: ${JSON.stringify(edgeTooltipPlacement)}`,
+    );
+  }
+  await webview.mouse.move(0, 0);
+  await webview.waitForTimeout(120);
+  const queryOrderkeyCheckbox = queryOrderkeyItem.getByRole("checkbox");
+  if (await queryOrderkeyCheckbox.isChecked()) {
+    throw new Error("cleared Query column unexpectedly remained selected");
+  }
+  await queryOrderkeyName.dispatchEvent("pointerdown", {
+    bubbles: true,
+    pointerType: "touch",
+  });
+  await queryOrderkeyName.dispatchEvent("click", { bubbles: true });
+  await queryNameTooltip.waitFor({ state: "visible" });
+  if (
+    (await queryNameTooltip.getAttribute("data-origin")) !== "focus" ||
+    await queryOrderkeyCheckbox.isChecked()
+  ) {
+    throw new Error(
+      "touch reveal either missed the Query tooltip or toggled its checkbox",
+    );
+  }
+  await webview.locator(".primary-workspace").dispatchEvent("pointerdown", {
+    bubbles: true,
+    pointerType: "touch",
+  });
+  await queryNameTooltip.waitFor({ state: "hidden" });
+  await queryOrderkeyName.evaluate((element) => {
+    element.style.removeProperty("width");
+  });
+  await embeddedQueryColumns
+    .getByRole("button", { name: "Select all", exact: true })
+    .click();
   const queryPartKey = embeddedQueryColumns.getByRole("checkbox", {
     name: /^l_partkey\b/u,
   });
@@ -2221,6 +2374,78 @@ try {
     await webview
       .getByRole("button", { name: "Add condition", exact: true })
       .click();
+    const predicateColumn = webview.getByLabel("Predicate column", {
+      exact: true,
+    });
+    const predicateColumnLabel = predicateColumn.locator("..")
+      .filter({ has: predicateColumn });
+    await predicateColumnLabel.evaluate((element) => {
+      element.style.width = "86px";
+    });
+    await webview.waitForFunction((element) =>
+      element.classList.contains("is-truncated"),
+    await predicateColumnLabel.elementHandle());
+    await webview.setViewportSize({ width: 330, height: 727 });
+    await predicateColumn.hover();
+    const predicateTooltip = webview.getByRole("tooltip");
+    await predicateTooltip.waitFor({ state: "visible" });
+    if (!(await predicateTooltip.innerText()).includes("l_orderkey · LONG")) {
+      throw new Error("narrow Where column did not reveal its full selected label");
+    }
+    const narrowPredicateGeometry = await predicateTooltip.evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      return {
+        left: bounds.left,
+        top: bounds.top,
+        right: bounds.right,
+        bottom: bounds.bottom,
+        viewportWidth: globalThis.document.documentElement.clientWidth,
+        viewportHeight: globalThis.document.documentElement.clientHeight,
+      };
+    });
+    if (
+      narrowPredicateGeometry.left < 0 ||
+      narrowPredicateGeometry.top < 0 ||
+      narrowPredicateGeometry.right > narrowPredicateGeometry.viewportWidth ||
+      narrowPredicateGeometry.bottom > narrowPredicateGeometry.viewportHeight
+    ) {
+      throw new Error(
+        `narrow Where tooltip escaped the viewport: ${JSON.stringify(narrowPredicateGeometry)}`,
+      );
+    }
+    await webview.mouse.move(0, 0);
+    await webview.waitForTimeout(120);
+    await predicateColumn.focus();
+    await predicateTooltip.waitFor({ state: "visible" });
+    if (
+      (await predicateTooltip.getAttribute("data-origin")) !== "focus" ||
+      (await predicateColumn.getAttribute("aria-describedby")) !==
+        (await predicateTooltip.getAttribute("id"))
+    ) {
+      throw new Error("Where native select lost its focus-anchored description");
+    }
+    await webview.keyboard.press("Escape");
+    if (
+      !(await predicateColumn.evaluate((element) => element.matches(":focus"))) ||
+      await predicateTooltip.count() !== 0 ||
+      await predicateColumn.getAttribute("aria-describedby") !== null
+    ) {
+      throw new Error(
+        "Where tooltip Escape did not dismiss cleanly or retain native select focus",
+      );
+    }
+    await predicateColumn.selectOption("1");
+    if (
+      await predicateColumn.inputValue() !== "1" ||
+      !(await predicateColumnLabel.innerText()).includes("l_partkey · LONG")
+    ) {
+      throw new Error("Where column wrapper replaced native select semantics");
+    }
+    await predicateColumn.selectOption("0");
+    await webview.setViewportSize({ width: 1440, height: 900 });
+    await predicateColumnLabel.evaluate((element) => {
+      element.style.removeProperty("width");
+    });
     if (
       await webview.evaluate((start) =>
         globalThis.webviewMessages
@@ -2232,6 +2457,40 @@ try {
     }
     await webview
       .getByRole("button", { name: "Remove condition", exact: true })
+      .click();
+    await webview
+      .getByRole("button", { name: /Where All rows/u })
+      .click();
+    await webview
+      .getByRole("button", { name: /Order by Natural file order/u })
+      .click();
+    await webview
+      .getByRole("button", { name: "Add order key", exact: true })
+      .click();
+    const orderColumn = webview.getByLabel("Order key 1 column", {
+      exact: true,
+    });
+    const orderColumnLabel = orderColumn.locator("..")
+      .filter({ has: orderColumn });
+    await orderColumnLabel.evaluate((element) => {
+      element.style.width = "86px";
+    });
+    await webview.waitForFunction((element) =>
+      element.classList.contains("is-truncated"),
+    await orderColumnLabel.elementHandle());
+    await orderColumn.hover();
+    const orderColumnTooltip = webview.getByRole("tooltip");
+    await orderColumnTooltip.waitFor({ state: "visible" });
+    if (!(await orderColumnTooltip.innerText()).includes("l_orderkey · LONG")) {
+      throw new Error("Order by column did not reveal its full selected label");
+    }
+    await webview.mouse.move(0, 0);
+    await webview.waitForTimeout(120);
+    await webview
+      .getByRole("button", { name: "Remove order key 1", exact: true })
+      .click();
+    await webview
+      .getByRole("button", { name: /Order by Natural file order/u })
       .click();
     const queryRequestStart = await webview.evaluate(
       () => globalThis.webviewMessages.length,

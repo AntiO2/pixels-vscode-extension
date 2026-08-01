@@ -188,6 +188,31 @@
   border-radius: 2px;
 }
 
+.query-column-select {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-width: 0;
+}
+
+.query-column-select .truncated-text-preview {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  padding: 5px 28px 5px 8px;
+  color: var(--px-control-text);
+  pointer-events: none;
+}
+
+.query-column-select > select {
+  width: 100%;
+  color: transparent;
+}
+
+.query-column-select > select option {
+  color: var(--px-control-text);
+}
+
 .query-plan-editor [aria-invalid="true"] {
   border-color: var(--px-error);
 }
@@ -553,6 +578,10 @@
   }
 
   .order-list li > select:first-of-type {
+    grid-column: 2;
+  }
+
+  .order-list li > .query-column-select {
     grid-column: 2;
   }
 

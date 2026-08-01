@@ -11,6 +11,9 @@ import type {
 import {
   Icon,
 } from "./Icon.js";
+import {
+  TruncatedText,
+} from "./TruncatedText.js";
 
 export interface ColumnChoice {
   readonly id: number;
@@ -116,7 +119,10 @@ export function ColumnsControl({
             checked={isSelected}
             onChange={onCheckboxChange}
           />
-          <span>{column.name}</span>
+          <TruncatedText
+            value={column.name}
+            className="projection-column-name"
+          />
           <span className="muted">{column.detail}</span>
         </label>
         {isSelected ? (

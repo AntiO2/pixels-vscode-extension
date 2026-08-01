@@ -243,6 +243,10 @@
   white-space: nowrap;
 }
 
+.projection-column-name {
+  min-width: 0;
+}
+
 .projection-order {
   display: inline-flex;
   align-items: center;

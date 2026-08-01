@@ -42,40 +42,15 @@
 }
 
 .exact-value-preview {
-  display: block;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.exact-value-preview.is-truncated {
-  cursor: help;
-}
-
-.exact-value-preview.is-truncated:focus-visible {
-  outline: 1px solid var(--px-focus);
-  outline-offset: 2px;
+  width: 100%;
 }
 
 .exact-value-popover {
-  position: fixed;
-  z-index: 70;
-  display: block;
   width: min(480px, calc(100vw - 24px));
   max-width: calc(100vw - 24px);
   padding: 10px 12px;
-  overflow: auto;
-  color: var(--px-text);
-  background: color-mix(in srgb, var(--px-overlay) 92%, transparent);
-  border: 1px solid var(--px-overlay-border);
-  border-radius: 4px;
   box-shadow: var(--px-shadow);
   backdrop-filter: blur(14px) saturate(1.08);
-}
-
-.exact-value-popover[data-positioned="false"] {
-  visibility: hidden;
 }
 
 .exact-value-popover code {
@@ -497,8 +472,6 @@ th {
   backdrop-filter: none;
 }
 
-.vscode-high-contrast .exact-value-popover,
-.vscode-high-contrast-light .exact-value-popover,
 .vscode-high-contrast .exact-value-copy-status,
 .vscode-high-contrast-light .exact-value-copy-status {
   background: var(--px-overlay);

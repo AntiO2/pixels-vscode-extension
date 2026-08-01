@@ -17,6 +17,9 @@ import {
   Icon,
 } from "../../components/Icon.js";
 import {
+  TruncatedText,
+} from "../../components/TruncatedText.js";
+import {
   typeLabel,
 } from "../shared/WorkspaceChrome.js";
 import {
@@ -82,26 +85,38 @@ export function OrderEditor({
               <span className="numeric" aria-label={`Priority ${String(index + 1)}`}>
                 {String(index + 1)}
               </span>
-              <select
-                aria-label={`Order key ${String(index + 1)} column`}
-                value={key.column}
-                onChange={(event) => {
-                  const next = [...keys];
-                  next[index] = {
-                    ...key,
-                    column: Number(event.currentTarget.value),
-                  };
-                  onChange(next);
-                }}
-              >
-                {[schemaTypeById(metadata, key.column), ...available]
-                  .filter((type): type is SchemaType => type !== undefined)
-                  .map((type) => (
-                    <option value={type.id} key={type.id}>
-                      {type.name} · {typeLabel(state, type)}
-                    </option>
-                  ))}
-              </select>
+              <TruncatedText
+                value={(() => {
+                  const type = schemaTypeById(metadata, key.column);
+                  return type === undefined
+                    ? "Unknown column"
+                    : `${type.name} · ${typeLabel(state, type)}`;
+                })()}
+                className="query-column-select"
+                renderControl={(describedBy) => (
+                  <select
+                    aria-label={`Order key ${String(index + 1)} column`}
+                    aria-describedby={describedBy}
+                    value={key.column}
+                    onChange={(event) => {
+                      const next = [...keys];
+                      next[index] = {
+                        ...key,
+                        column: Number(event.currentTarget.value),
+                      };
+                      onChange(next);
+                    }}
+                  >
+                    {[schemaTypeById(metadata, key.column), ...available]
+                      .filter((type): type is SchemaType => type !== undefined)
+                      .map((type) => (
+                        <option value={type.id} key={type.id}>
+                          {type.name} · {typeLabel(state, type)}
+                        </option>
+                      ))}
+                  </select>
+                )}
+              />
               <select
                 aria-label={`Order key ${String(index + 1)} direction`}
                 value={key.direction}

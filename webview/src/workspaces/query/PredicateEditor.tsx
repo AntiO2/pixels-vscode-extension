@@ -15,6 +15,9 @@ import {
   Icon,
 } from "../../components/Icon.js";
 import {
+  TruncatedText,
+} from "../../components/TruncatedText.js";
+import {
   typeLabel,
 } from "../shared/WorkspaceChrome.js";
 import {
@@ -268,31 +271,42 @@ function PredicateLeaf(props: PredicateNodeProps): ReactNode {
     <div className="predicate-leaf">
       <label>
         <span className="visually-hidden">Predicate column</span>
-        <select
-          value={node.column}
-          aria-label="Predicate column"
-          onChange={(event) => {
-            const column = Number(event.currentTarget.value);
-            const nextType = schemaTypeById(metadata, column);
-            const operator = operatorsForType(nextType)[0] ?? "eq";
-            onChange(
-              replaceExpression(expression, path, {
-                kind: "predicate",
-                column,
-                operator,
-                literal: "",
-              }),
-            );
-          }}
-        >
-          {rootTypes
-            .filter((candidate) => operatorsForType(candidate).length > 0)
-            .map((candidate) => (
-              <option value={candidate.id} key={candidate.id}>
-                {candidate.name} · {typeLabel(state, candidate)}
-              </option>
-            ))}
-        </select>
+        <TruncatedText
+          value={
+            type === undefined
+              ? "Unknown column"
+              : `${type.name} · ${typeLabel(state, type)}`
+          }
+          className="query-column-select"
+          renderControl={(describedBy) => (
+            <select
+              value={node.column}
+              aria-label="Predicate column"
+              aria-describedby={describedBy}
+              onChange={(event) => {
+                const column = Number(event.currentTarget.value);
+                const nextType = schemaTypeById(metadata, column);
+                const operator = operatorsForType(nextType)[0] ?? "eq";
+                onChange(
+                  replaceExpression(expression, path, {
+                    kind: "predicate",
+                    column,
+                    operator,
+                    literal: "",
+                  }),
+                );
+              }}
+            >
+              {rootTypes
+                .filter((candidate) => operatorsForType(candidate).length > 0)
+                .map((candidate) => (
+                  <option value={candidate.id} key={candidate.id}>
+                    {candidate.name} · {typeLabel(state, candidate)}
+                  </option>
+                ))}
+            </select>
+          )}
+        />
       </label>
       <label>
         <span className="visually-hidden">Predicate operator</span>

@@ -280,9 +280,69 @@ code {
   user-select: none;
 }
 
+.truncated-text {
+  position: relative;
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.truncated-text-preview {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.truncated-text.is-truncated {
+  cursor: help;
+}
+
+.truncated-text-preview.is-truncated:focus-visible {
+  outline: 1px solid var(--px-focus);
+  outline-offset: 2px;
+}
+
+.truncated-text-popover {
+  position: fixed;
+  z-index: 70;
+  display: block;
+  width: max-content;
+  max-width: min(420px, calc(100vw - 24px));
+  padding: 7px 9px;
+  overflow: auto;
+  color: var(--px-text);
+  background: color-mix(in srgb, var(--px-overlay) 92%, transparent);
+  border: 1px solid var(--px-overlay-border);
+  border-radius: 4px;
+  box-shadow: var(--px-shadow-small);
+  backdrop-filter: blur(12px) saturate(1.06);
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.truncated-text-popover[data-positioned="false"] {
+  visibility: hidden;
+}
+
+.vscode-high-contrast .truncated-text-popover,
+.vscode-high-contrast-light .truncated-text-popover {
+  background: var(--px-overlay);
+  border-color: var(--vscode-foreground);
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
 @media (prefers-reduced-transparency: reduce) {
   :root {
     --px-material: var(--px-surface-raised);
     --px-material-heavy: var(--px-surface);
+  }
+
+  .truncated-text-popover {
+    background: var(--px-overlay);
+    box-shadow: none;
+    backdrop-filter: none;
   }
 }
