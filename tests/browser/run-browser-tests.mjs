@@ -692,10 +692,6 @@ const browser = await chromium.launch({
 });
 try {
   const page = await browser.newPage();
-  await page.context().grantPermissions(
-    ["clipboard-read", "clipboard-write"],
-    { origin: `http://127.0.0.1:${String(address.port)}` },
-  );
   await page.goto(`http://127.0.0.1:${String(address.port)}/`);
   const result = await page.evaluate(async () => {
     return await globalThis.pixelsBrowserValidation;
@@ -710,6 +706,10 @@ try {
     );
   }
   const webview = await browser.newPage();
+  await webview.context().grantPermissions(
+    ["clipboard-read", "clipboard-write"],
+    { origin: `http://127.0.0.1:${String(address.port)}` },
+  );
   const runtimeErrors = [];
   webview.on("pageerror", (error) => {
     runtimeErrors.push(`pageerror: ${error.message}`);
