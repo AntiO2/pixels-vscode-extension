@@ -44,6 +44,9 @@ jobs:
         with:
           node-version: 24
           cache: npm
+      - name: Install upstream Reader compile dependency
+        # Used only by the native compile/test job; it is not a packaged runtime dependency.
+        run: sudo apt-get update && sudo apt-get install --yes liburing-dev
       - run: npm ci
       - run: npm run test:core-native
 

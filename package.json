@@ -138,7 +138,7 @@
     "test:core-native": "node scripts/test-core-native.mjs",
     "test:scan-real": "node scripts/test-scan-node.mjs",
     "test:browser": "npm run build && node tests/browser/run-browser-tests.mjs",
-    "check": "npm run lint && npm run typecheck && npm test && npm run build && npm run verify:core && npm run verify:package"
+    "check": "npm run lint && npm run typecheck && npm run build && npm test && npm run verify:core && npm run verify:package"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
