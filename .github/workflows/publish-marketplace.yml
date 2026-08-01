@@ -1,0 +1,210 @@
+name: Publish to VS Code Marketplace
+
+on:
+  release:
+    types:
+      - published
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Exact release tag to build (v<package.json version>)
+        required: true
+        type: string
+      pre_release:
+        description: Publish the VSIX as a Marketplace pre-release
+        required: true
+        default: false
+        type: boolean
+      publish:
+        description: Publish after packaging (leave disabled for bootstrap/dry runs)
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: vscode-marketplace-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Audit and publish generic VSIX
+    runs-on: ubuntu-latest
+    environment: vscode-marketplace
+    env:
+      AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      AZURE_CORE_OUTPUT: none
+      RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      RELEASE_PRERELEASE: ${{ github.event_name == 'release' && github.event.release.prerelease == true || github.event_name == 'workflow_dispatch' && inputs.pre_release == true }}
+      SHOULD_PUBLISH: ${{ github.event_name == 'release' || inputs.publish }}
+    steps:
+      - name: Validate release inputs
+        shell: bash
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Release tag must use v<major>.<minor>.<patch>."
+            exit 1
+          fi
+          if [[ -z "$AZURE_CLIENT_ID" ]]; then
+            echo "::error::The vscode-marketplace environment variable AZURE_CLIENT_ID is not configured."
+            exit 1
+          fi
+          if [[ -z "$AZURE_TENANT_ID" ]]; then
+            echo "::error::The vscode-marketplace environment variable AZURE_TENANT_ID is not configured."
+            exit 1
+          fi
+
+      - name: Validate manually selected GitHub Release
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          if ! release_state="$(
+            gh api \
+              "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" \
+              --jq '[.draft, .prerelease] | @tsv'
+          )"; then
+            echo "::error::The requested tag does not have an accessible GitHub Release."
+            exit 1
+          fi
+          IFS=$'\t' read -r release_draft release_prerelease <<< "$release_state"
+          if [[ "$release_draft" != "false" ]]; then
+            echo "::error::Manual publication requires a non-draft GitHub Release."
+            exit 1
+          fi
+          if [[ "$release_prerelease" != "$RELEASE_PRERELEASE" ]]; then
+            echo "::error::The manual pre-release input does not match the GitHub Release."
+            exit 1
+          fi
+
+      - name: Check out exact release tag
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          fetch-depth: 0
+          persist-credentials: false
+          submodules: true
+
+      - name: Verify tag, checkout, and package version
+        id: release
+        shell: bash
+        run: |
+          if ! git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"; then
+            echo "::error::The requested ref is not an exact Git tag."
+            exit 1
+          fi
+          tag_commit="$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")"
+          head_commit="$(git rev-parse HEAD)"
+          if [[ "$head_commit" != "$tag_commit" ]]; then
+            echo "::error::The checked-out commit does not match the requested tag."
+            exit 1
+          fi
+          version="$(node -e '
+            const fs = require("node:fs");
+            const manifest = JSON.parse(fs.readFileSync("package.json", "utf8"));
+            if (typeof manifest.version !== "string" || !/^\d+\.\d+\.\d+$/.test(manifest.version)) {
+              throw new Error("package.json version must use major.minor.patch");
+            }
+            process.stdout.write(manifest.version);
+          ')"
+          if [[ "$RELEASE_TAG" != "v$version" ]]; then
+            echo "::error::Release tag $RELEASE_TAG does not match package.json version $version."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "vsix_path=out/vsix/pixels-pxl-inspector-$version.vsix" >> "$GITHUB_OUTPUT"
+          echo "Verified $RELEASE_TAG at $head_commit."
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Verify pinned Marketplace CLI
+        shell: bash
+        run: |
+          installed="$(node -p "require('./node_modules/@vscode/vsce/package.json').version")"
+          if [[ "$installed" != "3.9.2" ]]; then
+            echo "::error::Expected local @vscode/vsce 3.9.2, found $installed."
+            exit 1
+          fi
+
+      - name: Build and audit generic VSIX
+        env:
+          PIXELS_RELEASE_REF: ${{ env.RELEASE_TAG }}
+          PIXELS_RELEASE_PRERELEASE: ${{ env.RELEASE_PRERELEASE }}
+        run: npm run package:vsix
+
+      - name: Confirm audited VSIX path
+        shell: bash
+        run: |
+          if [[ ! -f "${{ steps.release.outputs.vsix_path }}" ]]; then
+            echo "::error::The audited generic VSIX was not produced at the expected path."
+            exit 1
+          fi
+
+      - name: Upload audited generic VSIX
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: pixels-pxl-inspector-${{ steps.release.outputs.version }}
+          path: ${{ steps.release.outputs.vsix_path }}
+          if-no-files-found: error
+
+      - name: Sign in to Microsoft Entra with GitHub OIDC
+        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
+
+      - name: Resolve Visual Studio Marketplace profile
+        id: marketplace-profile
+        shell: bash
+        run: |
+          profile_id="$(az rest \
+            --method get \
+            --uri 'https://app.vssps.visualstudio.com/_apis/profile/profiles/me?api-version=7.1' \
+            --resource 499b84ac-1321-427f-aa17-267ca6975798 \
+            --query id \
+            --output tsv)"
+          if [[ -z "$profile_id" || "$profile_id" == "null" ]]; then
+            echo "::error::Microsoft Entra authentication did not return a Visual Studio Marketplace profile ID."
+            exit 1
+          fi
+          echo "Marketplace profile ID: $profile_id"
+          echo "### Visual Studio Marketplace identity" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Profile ID: \`$profile_id\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Authorize this profile as a Contributor on publisher \`AntiO2\` before enabling publication." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Record dry-run result
+        if: env.SHOULD_PUBLISH != 'true'
+        shell: bash
+        run: |
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "The audited VSIX was uploaded. Publication was disabled for this manual run." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish exact VSIX
+        if: env.SHOULD_PUBLISH == 'true'
+        shell: bash
+        run: |
+          args=(
+            publish
+            --azure-credential
+            --packagePath "${{ steps.release.outputs.vsix_path }}"
+            --skip-duplicate
+          )
+          if [[ "$RELEASE_PRERELEASE" == "true" ]]; then
+            args+=(--pre-release)
+          fi
+          ./node_modules/.bin/vsce "${args[@]}"

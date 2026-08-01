@@ -22,6 +22,11 @@ if (!/^[0-9a-f]{40}$/u.test(releaseRef) && !/^v?\d+\.\d+\.\d+$/u.test(releaseRef
   throw new Error("PIXELS_RELEASE_REF must be a full commit or release tag");
 }
 
+const releasePreRelease = process.env.PIXELS_RELEASE_PRERELEASE ?? "false";
+if (releasePreRelease !== "true" && releasePreRelease !== "false") {
+  throw new Error("PIXELS_RELEASE_PRERELEASE must be true or false");
+}
+
 const outputDirectory = path.join(repositoryRoot, "out", "vsix");
 await fs.mkdir(outputDirectory, { recursive: true });
 const output = path.join(
@@ -34,18 +39,22 @@ const executable = path.join(
   ".bin",
   process.platform === "win32" ? "vsce.cmd" : "vsce",
 );
+const args = [
+  "package",
+  "--no-dependencies",
+  "--githubBranch",
+  releaseRef,
+  "--out",
+  output,
+];
+if (releasePreRelease === "true") {
+  args.push("--pre-release");
+}
 
 await new Promise((resolve, reject) => {
   const child = spawn(
     executable,
-    [
-      "package",
-      "--no-dependencies",
-      "--githubBranch",
-      releaseRef,
-      "--out",
-      output,
-    ],
+    args,
     {
       cwd: repositoryRoot,
       stdio: "inherit",

@@ -126,6 +126,19 @@ const vsixManifest = members.get("extension.vsixmanifest").toString("utf8");
 if (!vsixManifest.includes(`Version="${rootManifest.version}"`)) {
   throw new Error("extension.vsixmanifest version does not match package.json");
 }
+const expectedPreRelease = process.env.PIXELS_RELEASE_PRERELEASE ?? "false";
+if (expectedPreRelease !== "true" && expectedPreRelease !== "false") {
+  throw new Error("PIXELS_RELEASE_PRERELEASE must be true or false");
+}
+const packagedPreRelease =
+  /<Property Id="Microsoft\.VisualStudio\.Code\.PreRelease" Value="true" \/>/u.test(
+    vsixManifest,
+  );
+if (packagedPreRelease !== (expectedPreRelease === "true")) {
+  throw new Error(
+    "extension.vsixmanifest pre-release state does not match PIXELS_RELEASE_PRERELEASE",
+  );
+}
 
 const stagedManifestBytes = await fs.readFile(manifestPath);
 const archiveManifestBytes = members.get(
