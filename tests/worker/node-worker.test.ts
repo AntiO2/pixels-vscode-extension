@@ -15,6 +15,7 @@ import {
   EXPECTED_PAGE,
   EXPECTED_ROW_GROUP,
 } from "../fixtures/expected.js";
+import { decodeCoreCorpus, runCoreCorpus } from "../fixtures/core-corpus.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const manifestPath = path.join(
@@ -102,6 +103,29 @@ async function createSupervisor(
 }
 
 describe("Node parser worker integration", () => {
+  it.runIf(process.env["PIXELS_WORKER_CORPUS_DIR"] !== undefined)(
+    "matches every native-generated compatibility golden through a real Worker",
+    async () => {
+      const directory = process.env["PIXELS_WORKER_CORPUS_DIR"];
+      if (directory === undefined) {
+        throw new Error("native Worker corpus directory is required");
+      }
+      const cases = decodeCoreCorpus(JSON.parse(
+        await fs.readFile(path.join(directory, "manifest.json"), "utf8"),
+      ));
+      const supervisor = await createSupervisor();
+      try {
+        const completed = await runCoreCorpus(cases, supervisor, (file) =>
+          NodeFileRangeSource.open(path.join(directory, file)),
+        );
+        expect(completed).toEqual(cases.map((test) => test.name));
+      } finally {
+        await supervisor.dispose();
+      }
+    },
+    120_000,
+  );
+
   it("round-trips the release customer example", async () => {
     const source = await NodeFileRangeSource.open(customerPath);
     const supervisor = await createSupervisor();

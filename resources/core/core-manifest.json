@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "abiVersion": 4,
-  "coreCommit": "5f45bd9064ace98b6788080e23fbcad6913e4b12",
+  "coreCommit": "591d6c249f4c7eff31c0c01d04f50f815160513d",
   "toolchain": {
     "emscripten": "6.0.5",
     "protobuf": "3.21.6"
@@ -32,8 +32,8 @@
       "sha256": "10ca62e927125e3ae9604feef215b3174dff344c21dd2e43e95a1e46cf4847cd"
     },
     "pixels-inspector-wasm.wasm": {
-      "bytes": 389654,
-      "sha256": "0e0a84ab66db89a93db968c303c63e4ef35a46dec4fcb807678184062c6189e6"
+      "bytes": 396424,
+      "sha256": "4296ae9bcfc7b73092970337d6e7566366e2dc81fdecd280eb989cec6fbd252d"
     }
   }
 }

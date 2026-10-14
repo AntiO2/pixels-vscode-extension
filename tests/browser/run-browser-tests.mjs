@@ -9,6 +9,11 @@ import { chromium } from "@playwright/test";
 
 const root = path.resolve(import.meta.dirname, "../..");
 const coreOverrideDirectory = process.env.PIXELS_SCAN_WASM_DIR;
+const corpusDirectory = process.env.PIXELS_WORKER_CORPUS_DIR;
+const workerOnly = process.argv.includes("--worker-only");
+if (workerOnly && corpusDirectory === undefined) {
+  throw new Error("Worker-only gate requires PIXELS_WORKER_CORPUS_DIR");
+}
 let coreOverrideManifest;
 if (coreOverrideDirectory !== undefined) {
   const wasm = await fs.readFile(
@@ -112,10 +117,13 @@ globalThis.acquireVsCodeApi = () => ({
       /^\/+/u,
       "",
     );
-    const filePath = path.resolve(root, relative);
+    const servingRoot = corpusDirectory !== undefined && relative.startsWith("native-corpus/")
+      ? path.resolve(corpusDirectory) : root;
+    const filePath = path.resolve(servingRoot, servingRoot === root
+      ? relative : relative.slice("native-corpus/".length));
     if (
-      filePath !== root &&
-      !filePath.startsWith(`${root}${path.sep}`)
+      filePath !== servingRoot &&
+      !filePath.startsWith(`${servingRoot}${path.sep}`)
     ) {
       response.writeHead(403).end();
       return;
@@ -684,17 +692,30 @@ async function assertInstalledSurfaceHierarchy(page, themeId) {
 
 await fs.mkdir(visualValidationDirectory, { recursive: true });
 
-const browser = await chromium.launch({
-  headless: true,
-  ...(process.env.PIXELS_CHROMIUM_EXECUTABLE === undefined
-    ? {}
-    : { executablePath: process.env.PIXELS_CHROMIUM_EXECUTABLE }),
-});
+let browser;
 try {
+  browser = await chromium.launch({
+    headless: true,
+    ...(process.env.PIXELS_CHROMIUM_EXECUTABLE === undefined
+      ? {}
+      : { executablePath: process.env.PIXELS_CHROMIUM_EXECUTABLE }),
+  });
   const page = await browser.newPage();
-  await page.goto(`http://127.0.0.1:${String(address.port)}/`);
+  await page.goto(`http://127.0.0.1:${String(address.port)}/${corpusDirectory === undefined ? "" : "?corpus=1"}`);
   const result = await page.evaluate(async () => {
-    return await globalThis.pixelsBrowserValidation;
+    let timer;
+    try {
+      return await Promise.race([
+        globalThis.pixelsBrowserValidation,
+        new Promise((_, reject) => {
+          timer = globalThis.setTimeout(() => reject(
+            new Error("browser Worker validation exceeded 120 seconds"),
+          ), 120_000);
+        }),
+      ]);
+    } finally {
+      globalThis.clearTimeout(timer);
+    }
   });
   if (
     result.generations !== 5 ||
@@ -705,6 +726,10 @@ try {
       `unexpected browser worker metrics: ${JSON.stringify(result)}`,
     );
   }
+  if (corpusDirectory !== undefined && result.corpusCases.length === 0) {
+    throw new Error("native browser Worker corpus was not executed");
+  }
+  if (!workerOnly) {
   const webview = await browser.newPage();
   await webview.context().grantPermissions(
     ["clipboard-read", "clipboard-write"],
@@ -3379,15 +3404,16 @@ try {
     );
   }
   await webview.close();
+  }
   process.stdout.write(
     `${JSON.stringify({
       ...result,
-      themes: themeCases.map((theme) => theme.id),
-      screenshots: visualValidationDirectory,
+      themes: workerOnly ? [] : themeCases.map((theme) => theme.id),
+      screenshots: workerOnly ? null : visualValidationDirectory,
     })}\n`,
   );
 } finally {
-  await browser.close();
+  await browser?.close();
   await new Promise((resolve, reject) => {
     server.close((error) => {
       if (error === undefined) {

@@ -10,10 +10,12 @@ import {
   EXPECTED_PAGE,
   EXPECTED_ROW_GROUP,
 } from "../fixtures/expected.js";
+import { decodeCoreCorpus, runCoreCorpus } from "../fixtures/core-corpus.js";
 
 const BROWSER_SOURCE_LIMIT = 64n * 1024n * 1024n;
 
 interface BrowserValidationResult {
+  readonly corpusCases: readonly string[];
   readonly metadata: string;
   readonly rowGroup: string;
   readonly page: string;
@@ -321,7 +323,39 @@ async function run(): Promise<BrowserValidationResult> {
     if (wasmArtifact === undefined) {
       throw new Error("Core manifest is missing WASM");
     }
+    let corpusCases: readonly string[] = [];
+    if (new URL(location.href).searchParams.has("corpus")) {
+      const response = await fetch("/native-corpus/manifest.json");
+      if (!response.ok) {
+        throw new Error("mandatory native browser Worker corpus is missing");
+      }
+      const cases = decodeCoreCorpus(await response.json());
+      const corpusSupervisor = new WorkerSupervisor(
+        new BrowserWorkerFactory("/dist/worker/browser.js"), manifest,
+        {
+          loaderUrl: "/resources/core/pixels-inspector-wasm.cjs",
+          wasmUrl: "/resources/core/pixels-inspector-wasm.wasm",
+        },
+        5_000,
+      );
+      try {
+        corpusCases = await runCoreCorpus(cases, corpusSupervisor, async (file) => {
+          const response = await fetch(`/native-corpus/${file}`);
+          if (!response.ok) {
+            throw new Error(`missing native browser fixture: ${file}`);
+          }
+          return new BufferRangeSource(
+            `test-vfs://browser/native-corpus/${file}`,
+            new Uint8Array(await response.arrayBuffer()),
+            { limit: BROWSER_SOURCE_LIMIT },
+          );
+        });
+      } finally {
+        await corpusSupervisor.dispose();
+      }
+    }
     return {
+      corpusCases,
       metadata,
       rowGroup,
       page,

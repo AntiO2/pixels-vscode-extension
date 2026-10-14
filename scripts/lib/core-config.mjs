@@ -7,7 +7,7 @@ export const repositoryRoot = path.resolve(
 );
 export const coreRoot = path.join(repositoryRoot, "third_party", "pixels");
 export const coreCommit =
-  "5f45bd9064ace98b6788080e23fbcad6913e4b12";
+  "591d6c249f4c7eff31c0c01d04f50f815160513d";
 export const coreAbi = 4;
 export const coreCapabilities = Object.freeze([
   "metadata-v2",
