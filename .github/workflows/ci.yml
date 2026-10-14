@@ -118,8 +118,9 @@ jobs:
       - run: npm run package:target -- ${{ matrix.target }}
       - name: Verify packaged WASM identity
         run: |
+          package_version="$(node -p 'require("./package.json").version')"
           expected="$(sha256sum resources/core/pixels-inspector-wasm.wasm | cut -d' ' -f1)"
-          actual="$(unzip -p out/vsix/pixels-pxl-inspector-${{ matrix.target }}-0.1.0.vsix extension/resources/core/pixels-inspector-wasm.wasm | sha256sum | cut -d' ' -f1)"
+          actual="$(unzip -p "out/vsix/pixels-pxl-inspector-${{ matrix.target }}-${package_version}.vsix" extension/resources/core/pixels-inspector-wasm.wasm | sha256sum | cut -d' ' -f1)"
           test "$expected" = "$actual"
       - uses: actions/upload-artifact@v4
         with:

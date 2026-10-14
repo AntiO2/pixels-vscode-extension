@@ -3,7 +3,7 @@
   "displayName": "Pixels PXL Inspector",
   "description": "Analyze, browse, and query Pixels PXL files with a portable WebAssembly Core.",
   "icon": "resources/icon.png",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "AntiO2",
   "author": {
     "name": "AntiO2"
